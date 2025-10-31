@@ -87,6 +87,31 @@ function DelegationDataPage() {
     "Verify Pending": 0
   });
 
+
+// New task creation API call function add करें
+const createNewTaskInSheet = async (newTaskData) => {
+  try {
+    const newTaskFormData = new FormData();
+    newTaskFormData.append("action", "createNewTask");
+    newTaskFormData.append("sheetName", CONFIG.SOURCE_SHEET_NAME);
+    newTaskFormData.append("taskData", JSON.stringify(newTaskData));
+    
+    const response = await fetch(CONFIG.APPS_SCRIPT_URL, {
+      method: "POST",
+      body: newTaskFormData,
+    });
+    
+    const result = await response.json();
+    console.log("New task creation result:", result);
+    return result;
+    
+  } catch (error) {
+    console.error("Error creating new task:", error);
+    throw error;
+  }
+};
+
+
   // Debounced search term for better performance
   const debouncedSearchTerm = useDebounce(searchTerm, 300)
 
@@ -736,165 +761,271 @@ function DelegationDataPage() {
     setShowHistory((prev) => !prev)
     resetFilters()
   }, [resetFilters])
+// Add these functions before handleSubmit function
+const isDateAfterCurrentWeekSunday = useCallback((selectedDate) => {
+  const today = new Date();
+  const currentWeekSunday = new Date(today);
+  
+  // Get current week's Sunday
+  const dayOfWeek = today.getDay();
+  const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
+  currentWeekSunday.setDate(today.getDate() + daysUntilSunday);
+  
+  const selected = new Date(selectedDate);
+  return selected > currentWeekSunday;
+}, []);
 
-  const handleSubmit = async () => {
-    const selectedItemsArray = Array.from(selectedItems)
+const handleSubmit = async () => {
+  const selectedItemsArray = Array.from(selectedItems)
+  
+  if (selectedItemsArray.length === 0) {
+    alert("Please select at least one item to submit")
+    return
+  }
 
-    if (selectedItemsArray.length === 0) {
-      alert("Please select at least one item to submit")
-      return
-    }
+  // Validate status for all selected items
+  const missingStatus = selectedItemsArray.filter((id) => !statusData[id])
+  if (missingStatus.length > 0) {
+    alert(`Please select a status for all selected items. ${missingStatus.length} items are missing status.`)
+    return
+  }
 
-    const missingStatus = selectedItemsArray.filter((id) => !statusData[id])
-    if (missingStatus.length > 0) {
-      alert(`Please select a status for all selected items. ${missingStatus.length} item(s) are missing status.`)
-      return
-    }
+  // Validate next target date for "Extend date" items
+  const missingNextDate = selectedItemsArray.filter(
+    (id) => statusData[id] === "Extend date" && !nextTargetDate[id]
+  )
+  if (missingNextDate.length > 0) {
+    alert(`Please select a next target date for all items with "Extend date" status. ${missingNextDate.length} items are missing target date.`)
+    return
+  }
 
-    const missingNextDate = selectedItemsArray.filter((id) => statusData[id] === "Extend date" && !nextTargetDate[id])
-    if (missingNextDate.length > 0) {
-      alert(
-        `Please select a next target date for all items with "Extend date" status. ${missingNextDate.length} item(s) are missing target date.`,
-      )
-      return
-    }
+  // Check for missing required images
+  const missingRequiredImages = selectedItemsArray.filter((id) => {
+    const item = accountData.find((account) => account._id === id)
+    const requiresAttachment = item?.col9 && item.col9.toUpperCase() === "YES"
+    return requiresAttachment && !item.image
+  })
+  
+  if (missingRequiredImages.length > 0) {
+    alert(`Please upload images for all required attachments. ${missingRequiredImages.length} items are missing required images.`)
+    return
+  }
 
-    const missingRequiredImages = selectedItemsArray.filter((id) => {
-      const item = accountData.find((account) => account._id === id)
-      const requiresAttachment = item["col9"] && item["col9"].toUpperCase() === "YES"
-      return requiresAttachment && !item.image
-    })
+  setIsSubmitting(true)
+  
+  try {
+    const today = new Date()
+    const dateForSubmission = formatDateForGoogleSheets(today)
 
-    if (missingRequiredImages.length > 0) {
-      alert(
-        `Please upload images for all required attachments. ${missingRequiredImages.length} item(s) are missing required images.`,
-      )
-      return
-    }
+    // Process submissions in batches
+    const batchSize = 5
+    for (let i = 0; i < selectedItemsArray.length; i += batchSize) {
+      const batch = selectedItemsArray.slice(i, i + batchSize)
+      
+      await Promise.all(
+        batch.map(async (id) => {
+          const item = accountData.find((account) => account._id === id)
+          
+          // ✅ CRITICAL FIX: Define originalTaskId at the beginning
+          const originalTaskId = item?.col1 || ""
+          
+          // Handle image upload if present
+          let imageUrl = ""
+          if (item.image instanceof File) {
+            try {
+              const base64Data = await fileToBase64(item.image)
+              const uploadFormData = new FormData()
+              uploadFormData.append("action", "uploadFile")
+              uploadFormData.append("base64Data", base64Data)
+              uploadFormData.append("fileName", `task_${originalTaskId}_${Date.now()}.${item.image.name.split('.').pop()}`)
+              uploadFormData.append("mimeType", item.image.type)
+              uploadFormData.append("folderId", CONFIG.DRIVE_FOLDER_ID)
 
-    setIsSubmitting(true)
-
-    try {
-      const today = new Date()
-      // UPDATED: Use the new function to format date properly for Google Sheets
-      const dateForSubmission = formatDateForGoogleSheets(today)
-
-      // Process submissions in batches for better performance
-      const batchSize = 5
-      for (let i = 0; i < selectedItemsArray.length; i += batchSize) {
-        const batch = selectedItemsArray.slice(i, i + batchSize)
-
-        await Promise.all(
-          batch.map(async (id) => {
-            const item = accountData.find((account) => account._id === id)
-            let imageUrl = ""
-
-            if (item.image instanceof File) {
-              try {
-                const base64Data = await fileToBase64(item.image)
-
-                const uploadFormData = new FormData()
-                uploadFormData.append("action", "uploadFile")
-                uploadFormData.append("base64Data", base64Data)
-                uploadFormData.append(
-                  "fileName",
-                  `task_${item["col1"]}_${Date.now()}.${item.image.name.split(".").pop()}`,
-                )
-                uploadFormData.append("mimeType", item.image.type)
-                uploadFormData.append("folderId", CONFIG.DRIVE_FOLDER_ID)
-
-                const uploadResponse = await fetch(CONFIG.APPS_SCRIPT_URL, {
-                  method: "POST",
-                  body: uploadFormData,
-                })
-
-                const uploadResult = await uploadResponse.json()
-                if (uploadResult.success) {
-                  imageUrl = uploadResult.fileUrl
-                }
-              } catch (uploadError) {
-                console.error("Error uploading image:", uploadError)
+              const uploadResponse = await fetch(CONFIG.APPS_SCRIPT_URL, {
+                method: "POST",
+                body: uploadFormData,
+              })
+              
+              const uploadResult = await uploadResponse.json()
+              if (uploadResult.success) {
+                imageUrl = uploadResult.fileUrl
               }
+            } catch (uploadError) {
+              console.error("Error uploading image:", uploadError)
+            }
+          }
+
+          // Check if it's extend date and determine action
+          const isExtendDate = statusData[id] === "Extend date"
+          const selectedDate = nextTargetDate[id]
+          let shouldCreateNewTask = false
+          
+          if (isExtendDate && selectedDate) {
+            // Parse the selected date (DD/MM/YYYY format)
+            const [day, month, year] = selectedDate.split('/')
+            const selectedDateObj = new Date(year, month - 1, day)
+            
+            // Check if selected date is after current week's Sunday
+            shouldCreateNewTask = isDateAfterCurrentWeekSunday(selectedDateObj)
+          }
+
+          // Format the next target date properly if it exists
+          let formattedNextTargetDate = ""
+          let nextTargetDateForGoogleSheets = null
+          
+          if (nextTargetDate[id]) {
+            const convertedDate = convertToGoogleSheetsDate(nextTargetDate[id])
+            formattedNextTargetDate = convertedDate.formatted
+            nextTargetDateForGoogleSheets = convertedDate.dateObject
+          }
+
+          if (shouldCreateNewTask) {
+            // Create new task for extension
+            console.log("Creating new task for extended date")
+            
+            // ✅ FIXED: Only 10 columns (A-J) for DELEGATION sheet - NO COLUMN K
+            const newTaskData = [
+              "", // A: Empty timestamp - auto-filled by server
+              "", // B: Empty - server will generate new numeric Task ID  
+              item.col2 || "", // C: Department
+              item.col3 || "", // D: Given By  
+              item.col4 || "", // E: Name
+              item.col5 || "", // F: Task description
+              formattedNextTargetDate, // G: New start date
+              item.col7 || "", // H: Frequency
+              item.col8 || "", // I: Enable Reminders
+              item.col9 || ""  // J: Require Attachment
+              // ✅ NO COLUMN K - Removed as requested
+            ]
+            
+            console.log("New task data (10 columns only):", newTaskData)
+            
+            const newTaskResult = await createNewTaskInSheet(newTaskData)
+            
+            if (!newTaskResult.success) {
+              throw new Error(`Failed to create new task: ${newTaskResult.error}`)
             }
 
-            // UPDATED: Use properly formatted date for submission
-            // Format the next target date properly if it exists
-            let formattedNextTargetDate = ""
-            let nextTargetDateForGoogleSheets = null
-
-            if (nextTargetDate[id]) {
-              const convertedDate = convertToGoogleSheetsDate(nextTargetDate[id])
-              formattedNextTargetDate = convertedDate.formatted
-              nextTargetDateForGoogleSheets = convertedDate.dateObject
+            // ✅ Submit history record to DELEGATION DONE sheet with TIMESTAMP (date + time)
+            const now = new Date()
+            const timestampWithTime = `${now.getDate().toString().padStart(2, '0')}/${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`
+            
+            const historyRowData = [
+              timestampWithTime, // A: Submission timestamp WITH TIME ✅ FIXED
+              originalTaskId, // B: Original task ID ✅ FIXED
+              "Extended to new task", // C: Status
+              formattedNextTargetDate, // D: Next target date
+              remarksData[id] || "", // E: Remarks
+              imageUrl, // F: Image URL
+              "", // G: Empty column
+              username, // H: User who extended
+              item.col5 || "", // I: Task description
+              item.col3 || ""  // J: Given By
+            ]
+            
+            const historyFormData = new FormData()
+            historyFormData.append("sheetName", CONFIG.TARGET_SHEET_NAME) // DELEGATION DONE
+            historyFormData.append("action", "insert")
+            historyFormData.append("rowData", JSON.stringify(historyRowData))
+            
+            const historyResponse = await fetch(CONFIG.APPS_SCRIPT_URL, {
+              method: "POST",
+              body: historyFormData,
+            })
+            
+            if (!historyResponse.ok) {
+              throw new Error("Failed to submit history record to DELEGATION DONE sheet")
             }
 
-            // Updated to include username in column H and task description in column I when submitting to history
+            // ✅ Check response success
+            const historyResult = await historyResponse.json()
+            if (!historyResult.success) {
+              throw new Error(`History submission failed: ${historyResult.error || 'Unknown error'}`)
+            }
+
+            console.log("Successfully submitted extension to DELEGATION DONE sheet")
+            
+          } else {
+            // ✅ Regular submission to DELEGATION DONE sheet with TIMESTAMP (date + time)
+            const now = new Date()
+            const timestampWithTime = `${now.getDate().toString().padStart(2, '0')}/${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`
+            
             const newRowData = [
-              dateForSubmission.formatted, // Use formatted date string
-              item["col1"] || "",
-              statusData[id] || "",
-              formattedNextTargetDate, // Use properly formatted next target date
-              remarksData[id] || "",
-              imageUrl,
-              "", // Column G
-              username, // Column H - Store the logged-in username
-              item["col5"] || "", // Column I - Task description from col5
-              item["col3"] || "", // Column J - Given By from original task
+              timestampWithTime, // A: Timestamp WITH TIME ✅ FIXED
+              item.col1 || "", // B: Task ID
+              statusData[id] || "", // C: Status
+              formattedNextTargetDate, // D: Next target date
+              remarksData[id] || "", // E: Remarks
+              imageUrl, // F: Image URL
+              "", // G: Empty column
+              username, // H: User
+              item.col5 || "", // I: Task description
+              item.col3 || ""  // J: Given By
             ]
 
             const insertFormData = new FormData()
-            insertFormData.append("sheetName", CONFIG.TARGET_SHEET_NAME)
+            insertFormData.append("sheetName", CONFIG.TARGET_SHEET_NAME) // DELEGATION DONE
             insertFormData.append("action", "insert")
             insertFormData.append("rowData", JSON.stringify(newRowData))
-
-            // UPDATED: Add comprehensive date format hints for Google Sheets
             insertFormData.append("dateFormat", "DD/MM/YYYY")
-            insertFormData.append("timestampColumn", "0") // Column A - Timestamp
-            insertFormData.append("nextTargetDateColumn", "3") // Column D - Next Target Date
+            insertFormData.append("timestampColumn", "0")
+            insertFormData.append("nextTargetDateColumn", "3")
 
-            // Add additional metadata for proper date handling
+            // ✅ FIXED: DateTime metadata for proper timestamp handling
             const dateMetadata = {
               columns: {
-                0: { type: "date", format: "DD/MM/YYYY" }, // Timestamp
-                3: { type: "date", format: "DD/MM/YYYY" }  // Next Target Date
+                0: { type: "datetime", format: "DD/MM/YYYY HH:mm:ss" }, // ✅ DateTime with time
+                3: { type: "date", format: "DD/MM/YYYY" }
               }
             }
             insertFormData.append("dateMetadata", JSON.stringify(dateMetadata))
 
-            // If we have a proper date object for next target date, send it separately
             if (nextTargetDateForGoogleSheets) {
               insertFormData.append("nextTargetDateObject", nextTargetDateForGoogleSheets.toISOString())
             }
 
-            return fetch(CONFIG.APPS_SCRIPT_URL, {
+            const response = await fetch(CONFIG.APPS_SCRIPT_URL, {
               method: "POST",
               body: insertFormData,
             })
-          }),
-        )
-      }
+            
+            if (!response.ok) {
+              throw new Error("Failed to submit task record to DELEGATION DONE sheet")
+            }
 
-      setAccountData((prev) => prev.filter((item) => !selectedItems.has(item._id)))
+            // ✅ Check response success
+            const result = await response.json()
+            if (!result.success) {
+              throw new Error(`Regular submission failed: ${result.error || 'Unknown error'}`)
+            }
 
-      setSuccessMessage(
-        `Successfully processed ${selectedItemsArray.length} task records! Data submitted to ${CONFIG.TARGET_SHEET_NAME} sheet.`,
+            console.log("Successfully submitted regular task to DELEGATION DONE sheet")
+          }
+        })
       )
-      setSelectedItems(new Set())
-      setAdditionalData({})
-      setRemarksData({})
-      setStatusData({})
-      setNextTargetDate({})
-
-      setTimeout(() => {
-        fetchSheetData()
-      }, 2000)
-    } catch (error) {
-      console.error("Submission error:", error)
-      alert("Failed to submit task records: " + error.message)
-    } finally {
-      setIsSubmitting(false)
     }
+
+    // Refresh data after successful submission
+    setAccountData((prev) => prev.filter((item) => !selectedItems.has(item._id)))
+    setSuccessMessage(`Successfully processed ${selectedItemsArray.length} task record(s)!`)
+    setSelectedItems(new Set())
+    setAdditionalData({})
+    setRemarksData({})
+    setStatusData({})
+    setNextTargetDate({})
+
+    // Refresh the data
+    setTimeout(() => {
+      fetchSheetData()
+    }, 2000)
+    
+  } catch (error) {
+    console.error("Submission error:", error)
+    alert(`Failed to submit task records: ${error.message}`)
+  } finally {
+    setIsSubmitting(false)
   }
+}
 
   const selectedItemsCount = selectedItems.size
 

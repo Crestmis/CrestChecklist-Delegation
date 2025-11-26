@@ -881,73 +881,275 @@ export default function AssignTask() {
   };
 
 
+  // const handleSubmit = async (e) => {
+  //   e.preventDefault();
+  //   setIsSubmitting(true);
+
+  //   try {
+  //     if (generatedTasks.length === 0) {
+  //       alert(
+  //         "Please generate tasks first by clicking Preview Generated Tasks"
+  //       );
+  //       setIsSubmitting(false);
+  //       return;
+  //     }
+
+  //     if (!formData.department || formData.department.trim() === "") {
+  //       alert("Please select a department before submitting tasks");
+  //       setIsSubmitting(false);
+  //       return;
+  //     }
+
+  //     // Determine the main sheet based on frequency
+  //     if (!formData.taskType) {
+  //       alert("Please select a task type first");
+  //       return;
+  //     }
+
+  //     // Determine the main sheet based on task type
+  //     let submitSheetName;
+  //     if (formData.taskType === "delegation") {
+  //       submitSheetName = "DELEGATION";
+  //     } else {
+  //       submitSheetName = "Checklist";
+  //     }
+  //     // Check if selected date is today
+  //     const isToday = () => {
+  //       if (!date) return false;
+  //       const today = new Date();
+  //       const selectedDate = new Date(date);
+
+  //       today.setHours(0, 0, 0, 0);
+  //       selectedDate.setHours(0, 0, 0, 0);
+
+  //       return selectedDate.getTime() === today.getTime();
+  //     };
+
+  //     let tasksToSubmit = generatedTasks;
+
+  //     // If today's date is selected, only submit today's task
+  //     if (isToday()) {
+  //       const todayDateStr = formatDateToDDMMYYYY(date);
+  //       tasksToSubmit = generatedTasks.filter((task) => {
+  //         const taskDateStr = task.dueDate.split(" ")[0]; // Get date part (DD/MM/YYYY)
+  //         return taskDateStr === todayDateStr;
+  //       });
+
+  //       if (tasksToSubmit.length === 0) {
+  //         tasksToSubmit = [generatedTasks[0]]; // Fallback to first task
+  //       }
+  //     }
+
+  //     // Get task IDs for main sheet
+  //     const lastTaskIdMain = await getLastTaskId(submitSheetName);
+  //     let nextTaskIdMain = lastTaskIdMain + 1;
+
+  //     // Prepare tasks data
+  //     const tasksDataMain = tasksToSubmit.map((task, index) => ({
+  //       timestamp: getCurrentTimestamp(),
+  //       taskId: (nextTaskIdMain + index).toString(),
+  //       firm: task.department,
+  //       givenBy: task.givenBy,
+  //       name: task.doer,
+  //       description: task.description,
+  //       startDate: task.dueDate,
+  //       freq: task.frequency,
+  //       enableReminders: task.enableReminders ? "Yes" : "No",
+  //       requireAttachment: task.requireAttachment ? "Yes" : "No",
+  //     }));
+
+  //     // Submit to main sheet (Delegation / Checklist)
+  //     const formPayloadMain = new FormData();
+  //     formPayloadMain.append("sheetName", submitSheetName);
+  //     formPayloadMain.append("action", "insert");
+  //     formPayloadMain.append("batchInsert", "true");
+  //     formPayloadMain.append("rowData", JSON.stringify(tasksDataMain));
+
+  //     await fetch(
+  //       "https://script.google.com/macros/s/AKfycbzXDZKaK19qMnm2SdqDjEMzusD5vFISI9IRH4ce4xFlTggpElU9ikpJU2ULfkGqvf9VMA/exec",
+  //       {
+  //         method: "POST",
+  //         body: formPayloadMain,
+  //         mode: "no-cors",
+  //       }
+  //     );
+
+  //     // ✅ Submit to UNIQUE sheet only if frequency is NOT one-time
+  //     if (formData.frequency !== "one-time") {
+  //       const lastTaskIdUnique = await getLastTaskId("UNIQUE");
+  //       let nextTaskIdUnique = lastTaskIdUnique + 1;
+
+  //       const tasksDataUnique = tasksToSubmit.map((task, index) => ({
+  //         timestamp: getCurrentTimestamp(),
+  //         taskId: (nextTaskIdUnique + index).toString(),
+  //         firm: task.department,
+  //         givenBy: task.givenBy,
+  //         name: task.doer,
+  //         description: task.description,
+  //         startDate: task.dueDate,
+  //         freq: task.frequency,
+  //         enableReminders: task.enableReminders ? "Yes" : "No",
+  //         requireAttachment: task.requireAttachment ? "Yes" : "No",
+  //       }));
+
+  //       const formPayloadUnique = new FormData();
+  //       formPayloadUnique.append("sheetName", "UNIQUE");
+  //       formPayloadUnique.append("action", "insert");
+  //       formPayloadUnique.append("batchInsert", "true");
+  //       formPayloadUnique.append("rowData", JSON.stringify(tasksDataUnique));
+
+  //       await fetch(
+  //         "https://script.google.com/macros/s/AKfycbzXDZKaK19qMnm2SdqDjEMzusD5vFISI9IRH4ce4xFlTggpElU9ikpJU2ULfkGqvf9VMA/exec",
+  //         {
+  //           method: "POST",
+  //           body: formPayloadUnique,
+  //           mode: "no-cors",
+  //         }
+  //       );
+  //     }
+
+  //     // Success message
+  //     const taskCount = tasksToSubmit.length;
+  //     let successMessage = `Successfully submitted ${taskCount} task(s) to ${submitSheetName}`;
+
+  //     if (formData.frequency !== "one-time") {
+  //       successMessage += ` and UNIQUE sheets!`;
+  //     }
+  //     if (isToday()) {
+  //       successMessage =
+  //         `Today's date selected - submitted ${taskCount} task(s) to ${submitSheetName}` +
+  //         (formData.frequency !== "one-time" ? " and UNIQUE sheets!" : "!");
+  //     }
+
+  //     alert(successMessage);
+
+  //     // Reset form
+  //     const userRole = sessionStorage.getItem("role");
+  //     const username = sessionStorage.getItem("username");
+
+  //     setFormData({
+  //       department: "",
+  //       givenBy: "",
+  //       doer: userRole !== "admin" && username ? formData.doer : "",
+  //       description: "",
+  //       frequency: "daily",
+  //       enableReminders: true,
+  //       requireAttachment: false,
+  //     });
+  //     setSelectedDate(null);
+  //     setTime("09:00");
+  //     setGeneratedTasks([]);
+  //     setAccordionOpen(false);
+  //   } catch (error) {
+  //     console.error("Submission error:", error);
+  //     alert("Failed to assign tasks. Please try again.");
+  //   } finally {
+  //     setIsSubmitting(false);
+  //   }
+  // };
+
+  // Helper function to format date for display in preview
+  
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
+  e.preventDefault();
+  setIsSubmitting(true);
 
-    try {
-      if (generatedTasks.length === 0) {
-        alert(
-          "Please generate tasks first by clicking Preview Generated Tasks"
-        );
-        setIsSubmitting(false);
-        return;
+  try {
+    if (generatedTasks.length === 0) {
+      alert(
+        "Please generate tasks first by clicking Preview Generated Tasks"
+      );
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!formData.department || formData.department.trim() === "") {
+      alert("Please select a department before submitting tasks");
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!formData.taskType) {
+      alert("Please select a task type first");
+      return;
+    }
+
+    let submitSheetName =
+      formData.taskType === "delegation" ? "DELEGATION" : "Checklist";
+
+    const isToday = () => {
+      if (!date) return false;
+      const today = new Date();
+      const selectedDate = new Date(date);
+
+      today.setHours(0, 0, 0, 0);
+      selectedDate.setHours(0, 0, 0, 0);
+
+      return selectedDate.getTime() === today.getTime();
+    };
+
+    let tasksToSubmit = generatedTasks;
+
+    if (isToday()) {
+      const todayDateStr = formatDateToDDMMYYYY(date);
+      tasksToSubmit = generatedTasks.filter((task) => {
+        const taskDateStr = task.dueDate.split(" ")[0];
+        return taskDateStr === todayDateStr;
+      });
+
+      if (tasksToSubmit.length === 0) {
+        tasksToSubmit = [generatedTasks[0]];
       }
+    }
 
-      if (!formData.department || formData.department.trim() === "") {
-        alert("Please select a department before submitting tasks");
-        setIsSubmitting(false);
-        return;
+    const lastTaskIdMain = await getLastTaskId(submitSheetName);
+    let nextTaskIdMain = lastTaskIdMain + 1;
+
+    // ⭐ MAIN SHEET taskId logic — Checklist = blank, Delegation = auto
+    const tasksDataMain = tasksToSubmit.map((task, index) => ({
+      timestamp: getCurrentTimestamp(),
+
+      taskId:
+        formData.taskType === "checklist"
+          ? "" // ONLY CHECKLIST MAIN SHEET → blank
+          : (nextTaskIdMain + index).toString(),
+
+      firm: task.department,
+      givenBy: task.givenBy,
+      name: task.doer,
+      description: task.description,
+      startDate: task.dueDate,
+      freq: task.frequency,
+      enableReminders: task.enableReminders ? "Yes" : "No",
+      requireAttachment: task.requireAttachment ? "Yes" : "No",
+    }));
+
+    // MAIN SHEET submit
+    const formPayloadMain = new FormData();
+    formPayloadMain.append("sheetName", submitSheetName);
+    formPayloadMain.append("action", "insert");
+    formPayloadMain.append("batchInsert", "true");
+    formPayloadMain.append("rowData", JSON.stringify(tasksDataMain));
+
+    await fetch(
+      "https://script.google.com/macros/s/AKfycbzXDZKaK19qMnm2SdqDjEMzusD5vFISI9IRH4ce4xFlTggpElU9ikpJU2ULfkGqvf9VMA/exec",
+      {
+        method: "POST",
+        body: formPayloadMain,
+        mode: "no-cors",
       }
+    );
 
-      // Determine the main sheet based on frequency
-      if (!formData.taskType) {
-        alert("Please select a task type first");
-        return;
-      }
+    // ⭐ UNIQUE SHEET → ALWAYS GENERATE taskId (never blank)
+    if (formData.frequency !== "one-time") {
+      const lastTaskIdUnique = await getLastTaskId("UNIQUE");
+      let nextTaskIdUnique = lastTaskIdUnique + 1;
 
-      // Determine the main sheet based on task type
-      let submitSheetName;
-      if (formData.taskType === "delegation") {
-        submitSheetName = "DELEGATION";
-      } else {
-        submitSheetName = "Checklist";
-      }
-      // Check if selected date is today
-      const isToday = () => {
-        if (!date) return false;
-        const today = new Date();
-        const selectedDate = new Date(date);
-
-        today.setHours(0, 0, 0, 0);
-        selectedDate.setHours(0, 0, 0, 0);
-
-        return selectedDate.getTime() === today.getTime();
-      };
-
-      let tasksToSubmit = generatedTasks;
-
-      // If today's date is selected, only submit today's task
-      if (isToday()) {
-        const todayDateStr = formatDateToDDMMYYYY(date);
-        tasksToSubmit = generatedTasks.filter((task) => {
-          const taskDateStr = task.dueDate.split(" ")[0]; // Get date part (DD/MM/YYYY)
-          return taskDateStr === todayDateStr;
-        });
-
-        if (tasksToSubmit.length === 0) {
-          tasksToSubmit = [generatedTasks[0]]; // Fallback to first task
-        }
-      }
-
-      // Get task IDs for main sheet
-      const lastTaskIdMain = await getLastTaskId(submitSheetName);
-      let nextTaskIdMain = lastTaskIdMain + 1;
-
-      // Prepare tasks data
-      const tasksDataMain = tasksToSubmit.map((task, index) => ({
+      const tasksDataUnique = tasksToSubmit.map((task, index) => ({
         timestamp: getCurrentTimestamp(),
-        taskId: (nextTaskIdMain + index).toString(),
+
+        taskId: (nextTaskIdUnique + index).toString(), // ALWAYS auto-id
+
         firm: task.department,
         givenBy: task.givenBy,
         name: task.doer,
@@ -958,97 +1160,61 @@ export default function AssignTask() {
         requireAttachment: task.requireAttachment ? "Yes" : "No",
       }));
 
-      // Submit to main sheet (Delegation / Checklist)
-      const formPayloadMain = new FormData();
-      formPayloadMain.append("sheetName", submitSheetName);
-      formPayloadMain.append("action", "insert");
-      formPayloadMain.append("batchInsert", "true");
-      formPayloadMain.append("rowData", JSON.stringify(tasksDataMain));
+      const formPayloadUnique = new FormData();
+      formPayloadUnique.append("sheetName", "UNIQUE");
+      formPayloadUnique.append("action", "insert");
+      formPayloadUnique.append("batchInsert", "true");
+      formPayloadUnique.append("rowData", JSON.stringify(tasksDataUnique));
 
       await fetch(
         "https://script.google.com/macros/s/AKfycbzXDZKaK19qMnm2SdqDjEMzusD5vFISI9IRH4ce4xFlTggpElU9ikpJU2ULfkGqvf9VMA/exec",
         {
           method: "POST",
-          body: formPayloadMain,
+          body: formPayloadUnique,
           mode: "no-cors",
         }
       );
-
-      // ✅ Submit to UNIQUE sheet only if frequency is NOT one-time
-      if (formData.frequency !== "one-time") {
-        const lastTaskIdUnique = await getLastTaskId("UNIQUE");
-        let nextTaskIdUnique = lastTaskIdUnique + 1;
-
-        const tasksDataUnique = tasksToSubmit.map((task, index) => ({
-          timestamp: getCurrentTimestamp(),
-          taskId: (nextTaskIdUnique + index).toString(),
-          firm: task.department,
-          givenBy: task.givenBy,
-          name: task.doer,
-          description: task.description,
-          startDate: task.dueDate,
-          freq: task.frequency,
-          enableReminders: task.enableReminders ? "Yes" : "No",
-          requireAttachment: task.requireAttachment ? "Yes" : "No",
-        }));
-
-        const formPayloadUnique = new FormData();
-        formPayloadUnique.append("sheetName", "UNIQUE");
-        formPayloadUnique.append("action", "insert");
-        formPayloadUnique.append("batchInsert", "true");
-        formPayloadUnique.append("rowData", JSON.stringify(tasksDataUnique));
-
-        await fetch(
-          "https://script.google.com/macros/s/AKfycbzXDZKaK19qMnm2SdqDjEMzusD5vFISI9IRH4ce4xFlTggpElU9ikpJU2ULfkGqvf9VMA/exec",
-          {
-            method: "POST",
-            body: formPayloadUnique,
-            mode: "no-cors",
-          }
-        );
-      }
-
-      // Success message
-      const taskCount = tasksToSubmit.length;
-      let successMessage = `Successfully submitted ${taskCount} task(s) to ${submitSheetName}`;
-
-      if (formData.frequency !== "one-time") {
-        successMessage += ` and UNIQUE sheets!`;
-      }
-      if (isToday()) {
-        successMessage =
-          `Today's date selected - submitted ${taskCount} task(s) to ${submitSheetName}` +
-          (formData.frequency !== "one-time" ? " and UNIQUE sheets!" : "!");
-      }
-
-      alert(successMessage);
-
-      // Reset form
-      const userRole = sessionStorage.getItem("role");
-      const username = sessionStorage.getItem("username");
-
-      setFormData({
-        department: "",
-        givenBy: "",
-        doer: userRole !== "admin" && username ? formData.doer : "",
-        description: "",
-        frequency: "daily",
-        enableReminders: true,
-        requireAttachment: false,
-      });
-      setSelectedDate(null);
-      setTime("09:00");
-      setGeneratedTasks([]);
-      setAccordionOpen(false);
-    } catch (error) {
-      console.error("Submission error:", error);
-      alert("Failed to assign tasks. Please try again.");
-    } finally {
-      setIsSubmitting(false);
     }
-  };
 
-  // Helper function to format date for display in preview
+    const taskCount = tasksToSubmit.length;
+    let successMessage = `Successfully submitted ${taskCount} task(s) to ${submitSheetName}`;
+
+    if (formData.frequency !== "one-time") {
+      successMessage += ` and UNIQUE sheets!`;
+    }
+    if (isToday()) {
+      successMessage =
+        `Today's date selected - submitted ${taskCount} task(s) to ${submitSheetName}` +
+        (formData.frequency !== "one-time" ? " and UNIQUE sheets!" : "!");
+    }
+
+    alert(successMessage);
+
+    const userRole = sessionStorage.getItem("role");
+    const username = sessionStorage.getItem("username");
+
+    setFormData({
+      department: "",
+      givenBy: "",
+      doer: userRole !== "admin" && username ? formData.doer : "",
+      description: "",
+      frequency: "daily",
+      enableReminders: true,
+      requireAttachment: false,
+    });
+    setSelectedDate(null);
+    setTime("09:00");
+    setGeneratedTasks([]);
+    setAccordionOpen(false);
+  } catch (error) {
+    console.error("Submission error:", error);
+    alert("Failed to assign tasks. Please try again.");
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+
+  
   const formatDateForDisplay = (dateTimeStr) => {
     // dateTimeStr is in format "DD/MM/YYYY HH:MM:SS"
     return dateTimeStr;

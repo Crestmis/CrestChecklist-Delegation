@@ -947,8 +947,7 @@ export default function AssignTask() {
       // Prepare tasks data
       const tasksDataMain = tasksToSubmit.map((task, index) => ({
         timestamp: getCurrentTimestamp(),
-        // taskId: (nextTaskIdMain + index).toString(),
-        "",
+        taskId: (nextTaskIdMain + index).toString(),
         firm: task.department,
         givenBy: task.givenBy,
         name: task.doer,

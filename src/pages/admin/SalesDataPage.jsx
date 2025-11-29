@@ -39,7 +39,7 @@ function AccountDataPage() {
   const [endDate, setEndDate] = useState("")
   const [userRole, setUserRole] = useState("")
   const [username, setUsername] = useState("")
-
+  const [adminDepartment, setAdminDepartment] = useState("")
   // NEW: Admin history selection states
   const [selectedHistoryItems, setSelectedHistoryItems] = useState([])
   const [markingAsDone, setMarkingAsDone] = useState(false)
@@ -92,8 +92,10 @@ function AccountDataPage() {
   useEffect(() => {
     const role = sessionStorage.getItem("role")
     const user = sessionStorage.getItem("username")
+    const department = sessionStorage.getItem("department") // Get department from session storage
     setUserRole(role || "")
     setUsername(user || "")
+    setAdminDepartment(department || "") // Store admin's department
   }, [])
 
   // UPDATED: Parse Google Sheets date-time to handle DD/MM/YYYY HH:MM:SS format
@@ -388,6 +390,8 @@ function AccountDataPage() {
 
       const currentUsername = sessionStorage.getItem("username")
       const currentUserRole = sessionStorage.getItem("role")
+      const currentAdminDept = sessionStorage.getItem("department") // Get current admin department
+      
       const today = new Date()
       const tomorrow = new Date(today)
       tomorrow.setDate(today.getDate() + 1)
@@ -407,6 +411,7 @@ function AccountDataPage() {
 
       rows.forEach((row, rowIndex) => {
         if (rowIndex === 0) return
+        
         let rowValues = []
         if (row.c) {
           rowValues = row.c.map((cell) => (cell && cell.v !== undefined ? cell.v : ""))
@@ -416,38 +421,48 @@ function AccountDataPage() {
           console.log("Unknown row format:", row)
           return
         }
-
+      
         const assignedTo = rowValues[4] || "Unassigned"
+        const departmentName = rowValues[2] || "Unassigned" // Column C (Department)
         membersSet.add(assignedTo)
+      
+        // ✅ Apply user/admin filtering FIRST
         const isUserMatch = currentUserRole === "admin" || assignedTo.toLowerCase() === currentUsername.toLowerCase()
         if (!isUserMatch && currentUserRole !== "admin") return
-
+      
+        // ✅ For admin: Check department match
+        if (currentUserRole === "admin" && currentAdminDept && currentAdminDept.toLowerCase() !== "all") {
+          if (!departmentName || departmentName.toLowerCase().trim() !== currentAdminDept.toLowerCase().trim()) {
+            console.log(`Skipping task - Department mismatch: "${currentAdminDept}" vs "${departmentName}"`)
+            return // Skip if department doesn't match
+          }
+        }
+      
         const columnGValue = rowValues[6] // Task Start Date
         const columnKValue = rowValues[10] // Actual Date
         const columnMValue = rowValues[12] // Status (DONE)
         const columnPValue = rowValues[15] // Admin Processed Date (Column P)
-
+      
         // Skip rows marked as DONE in column M for pending tasks only
         if (columnMValue && columnMValue.toString().trim() === "DONE") {
           return
         }
-
+      
         const rowDateStr = columnGValue ? String(columnGValue).trim() : ""
         const formattedRowDate = parseGoogleSheetsDateTime(rowDateStr)
         const googleSheetsRowIndex = rowIndex + 1
-
-        // Create stable unique ID using task ID and row index
+      
         const taskId = rowValues[1] || ""
         const stableId = taskId
           ? `task_${taskId}_${googleSheetsRowIndex}`
           : `row_${googleSheetsRowIndex}_${Math.random().toString(36).substring(2, 15)}`
-
+      
         const rowData = {
           _id: stableId,
           _rowIndex: googleSheetsRowIndex,
           _taskId: taskId,
         }
-
+      
         const columnHeaders = [
           { id: "col0", label: "Timestamp", type: "string" },
           { id: "col1", label: "Task ID", type: "string" },
@@ -460,13 +475,13 @@ function AccountDataPage() {
           { id: "col8", label: "Enable Reminders", type: "string" },
           { id: "col9", label: "Require Attachment", type: "string" },
           { id: "col10", label: "Actual", type: "datetime" },
-          { id: "col11", label: "Delay", type: "string" }, // Column L - Delay
+          { id: "col11", label: "Delay", type: "string" },
           { id: "col12", label: "Status", type: "string" },
           { id: "col13", label: "Remarks", type: "string" },
           { id: "col14", label: "Uploaded Image", type: "string" },
-          { id: "col15", label: "Admin Done", type: "string" }, // Column P
+          { id: "col15", label: "Admin Done", type: "string" },
         ]
-
+      
         columnHeaders.forEach((header, index) => {
           const cellValue = rowValues[index]
           if (
@@ -481,12 +496,12 @@ function AccountDataPage() {
             rowData[header.id] = cellValue !== null ? cellValue : ""
           }
         })
-
-        console.log(`Row ${rowIndex}: Task ID = ${rowData.col1}, Google Sheets Row = ${googleSheetsRowIndex}`)
-
+      
+        console.log(`Row ${rowIndex}: Task ID = ${rowData.col1}, Department = ${departmentName}, Google Sheets Row = ${googleSheetsRowIndex}`)
+      
         const hasColumnG = !isEmpty(columnGValue)
         const isColumnKEmpty = isEmpty(columnKValue)
-
+      
         // For pending tasks, exclude admin processed items (Column P not empty)
         if (hasColumnG && isColumnKEmpty && isEmpty(columnPValue)) {
           const rowDate = parseDateFromDDMMYYYY(formattedRowDate)
@@ -506,6 +521,7 @@ function AccountDataPage() {
           }
         }
       })
+      
 
       setMembersList(Array.from(membersSet).sort())
       setAccountData(pendingAccounts)
@@ -519,9 +535,12 @@ function AccountDataPage() {
   }, [])
 
   useEffect(() => {
-    fetchSheetData()
-  }, [fetchSheetData])
-
+    // Fetch when role, username, or department changes
+    if (userRole && username) {
+      console.log(`Fetching checklist data: role=${userRole}, username=${username}, department=${adminDepartment}`)
+      fetchSheetData()
+    }
+  }, [userRole, username, adminDepartment, fetchSheetData])
   // Checkbox handlers with better state management
   const handleSelectItem = useCallback((id, isChecked) => {
     console.log(`Checkbox action: ${id} -> ${isChecked}`)
@@ -1345,7 +1364,7 @@ function AccountDataPage() {
                             >
                               <option value="">Select...</option>
                               <option value="Yes">Yes</option>
-                              <option value="No">No</option>
+                             
                             </select>
                           </td>
                           <td className="px-3 py-4 bg-orange-50 min-w-[150px]">

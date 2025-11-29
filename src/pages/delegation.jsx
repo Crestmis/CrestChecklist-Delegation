@@ -60,7 +60,7 @@ function DelegationDataPage() {
   const [endDate, setEndDate] = useState("")
   const [userRole, setUserRole] = useState("")
   const [username, setUsername] = useState("")
-
+  const [adminDepartment, setAdminDepartment] = useState("")
 
   const [nameFilter, setNameFilter] = useState("")
   const [dateFilter, setDateFilter] = useState("")
@@ -182,7 +182,6 @@ const createNewTaskInSheet = async (newTaskData) => {
   }, [])
 
 
-
   useEffect(() => {
     if (accountData.length > 0) {
       const counts = {
@@ -191,33 +190,42 @@ const createNewTaskInSheet = async (newTaskData) => {
         "Planned": 0,
         "Verify Pending": 0
       };
-
-      // First filter by name if a name filter is applied
+  
       let filteredData = accountData;
-      if (nameFilter) {
-        filteredData = accountData.filter(item => item["col4"] === nameFilter);
+      
+      // First filter by department if admin
+      if (userRole === "admin" && adminDepartment) {
+        filteredData = accountData.filter(item => 
+          item["col2"]?.toLowerCase().trim() === adminDepartment.toLowerCase().trim()
+        );
       }
-
+      
+      // Then filter by name if a name filter is applied
+      if (nameFilter) {
+        filteredData = filteredData.filter(item => item["col4"] === nameFilter);
+      }
+  
       filteredData.forEach(item => {
         // Only count tasks assigned to the logged-in user if not admin
         if (userRole !== "admin" && item["col4"] !== username) return;
-
+  
         const status = item["col20"];
         if (status && counts.hasOwnProperty(status)) {
           counts[status]++;
         }
       });
-
+  
       setStatusCounts(counts);
     }
-  }, [accountData, userRole, username, nameFilter]); // Added nameFilter dependency
-
+  }, [accountData, userRole, username, nameFilter, adminDepartment]);
 
   useEffect(() => {
     const role = sessionStorage.getItem("role")
     const user = sessionStorage.getItem("username")
+    const department = sessionStorage.getItem("department") // Get department from session storage
     setUserRole(role || "")
     setUsername(user || "")
+    setAdminDepartment(department || "") // Store admin's department
   }, [])
 
   const parseGoogleSheetsDate = useCallback(
@@ -366,7 +374,6 @@ const createNewTaskInSheet = async (newTaskData) => {
     return { status: "—", color: "bg-gray-100", textColor: "text-gray-800" }
   }, [delegationData, isEmpty])
 
-  // Optimized filtered data with debounced search
   const filteredAccountData = useMemo(() => {
     const filtered = debouncedSearchTerm
       ? accountData.filter((account) =>
@@ -376,48 +383,66 @@ const createNewTaskInSheet = async (newTaskData) => {
         (account["col20"] && account["col20"].toString().toLowerCase().includes(debouncedSearchTerm.toLowerCase()))
       )
       : accountData;
-
+  
     return filtered
       .filter((account) => {
+        // Department filter for admin
+        if (userRole === "admin" && adminDepartment) {
+          const taskDepartment = account["col2"] // Column C (Department)
+          if (!taskDepartment || taskDepartment.toLowerCase().trim() !== adminDepartment.toLowerCase().trim()) {
+            return false;
+          }
+        }
+  
         // Name filter - apply if a name is selected
         if (nameFilter && account["col4"] !== nameFilter) return false;
-
+  
         // Date range filter
         if (dateRange.start || dateRange.end) {
           const taskDate = parseDateFromDDMMYYYY(formatDateForDisplay(account["col6"]));
           if (!taskDate) return false;
-
+  
           if (dateRange.start) {
             const startDate = new Date(dateRange.start);
             startDate.setHours(0, 0, 0, 0);
             if (taskDate < startDate) return false;
           }
-
+  
           if (dateRange.end) {
             const endDate = new Date(dateRange.end);
             endDate.setHours(23, 59, 59, 999);
             if (taskDate > endDate) return false;
           }
         }
-
+  
         // Status filter - apply if a status is selected (and it's not "All Status")
         if (statusFilter && statusFilter !== "All Status" && account["col20"] !== statusFilter) {
           return false;
         }
-
+  
         return true;
       })
       .sort(sortDateWise);
-  }, [accountData, debouncedSearchTerm, nameFilter, dateRange, statusFilter, formatDateForDisplay, parseDateFromDDMMYYYY, sortDateWise]);
-
+  }, [accountData, debouncedSearchTerm, nameFilter, dateRange, statusFilter, formatDateForDisplay, parseDateFromDDMMYYYY, sortDateWise, userRole, adminDepartment]);
+  
   const uniqueNames = useMemo(() => {
     const names = new Set()
     accountData.forEach((item) => {
-      if (item["col4"]) names.add(item["col4"])
+      // For admin, only show names from their department
+      if (userRole === "admin" && adminDepartment) {
+        if (item["col2"]?.toLowerCase().trim() === adminDepartment.toLowerCase().trim() && item["col4"]) {
+          names.add(item["col4"])
+        }
+      } else if (userRole !== "admin" && item["col4"]) {
+        // For non-admin, show all names assigned to them
+        if (item["col4"]?.toLowerCase().trim() === username.toLowerCase().trim()) {
+          names.add(item["col4"])
+        }
+      }
     })
     return Array.from(names).sort()
-  }, [accountData])
-
+  }, [accountData, userRole, username, adminDepartment])
+  
   const uniqueDates = useMemo(() => {
     const dates = new Set()
     accountData.forEach((item) => {
@@ -480,24 +505,21 @@ const createNewTaskInSheet = async (newTaskData) => {
       })
   }, [historyData, debouncedSearchTerm, startDate, endDate, parseDateFromDDMMYYYY, userRole, username])
 
-  // Optimized data fetching with parallel requests
-  // Optimized data fetching with parallel requests
   const fetchSheetData = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
-
-
+  
       // Parallel fetch both sheets for better performance
       const [mainResponse, historyResponse] = await Promise.all([
         fetch(`${CONFIG.APPS_SCRIPT_URL}?sheet=${CONFIG.SOURCE_SHEET_NAME}&action=fetch`),
         fetch(`${CONFIG.APPS_SCRIPT_URL}?sheet=${CONFIG.TARGET_SHEET_NAME}&action=fetch`).catch(() => null),
       ])
-
+  
       if (!mainResponse.ok) {
         throw new Error(`Failed to fetch data: ${mainResponse.status}`)
       }
-
+  
       // Process main data
       const mainText = await mainResponse.text()
       let data
@@ -513,7 +535,7 @@ const createNewTaskInSheet = async (newTaskData) => {
           throw new Error("Invalid JSON response from server")
         }
       }
-
+  
       // Process history data if available
       let processedHistoryData = []
       if (historyResponse && historyResponse.ok) {
@@ -530,20 +552,19 @@ const createNewTaskInSheet = async (newTaskData) => {
               historyData = JSON.parse(jsonString)
             }
           }
-
+  
           if (historyData && historyData.table && historyData.table.rows) {
             processedHistoryData = historyData.table.rows
               .map((row, rowIndex) => {
                 if (rowIndex === 0) return null
-
+  
                 const rowData = {
                   _id: Math.random().toString(36).substring(2, 15),
                   _rowIndex: rowIndex + 1,
                 }
-
+  
                 const rowValues = row.c ? row.c.map((cell) => (cell && cell.v !== undefined ? cell.v : "")) : []
-
-                // Map all columns including column H (col7) for user filtering, column I (col8) for Task, and column P (col15) for Admin Done
+  
                 for (let i = 0; i < 16; i++) {
                   if (i === 0 || i === 6 || i === 10) {
                     rowData[`col${i}`] = rowValues[i] ? parseGoogleSheetsDate(String(rowValues[i])) : ""
@@ -551,7 +572,7 @@ const createNewTaskInSheet = async (newTaskData) => {
                     rowData[`col${i}`] = rowValues[i] || ""
                   }
                 }
-
+  
                 return rowData
               })
               .filter((row) => row !== null)
@@ -560,12 +581,12 @@ const createNewTaskInSheet = async (newTaskData) => {
           console.error("Error processing history data:", historyError)
         }
       }
-
+  
       setHistoryData(processedHistoryData)
-
-      // Process main delegation data - ADD USER FILTERING LOGIC
+  
+      // Process main delegation data
       const allDelegationData = []
-
+  
       let rows = []
       if (data.table && data.table.rows) {
         rows = data.table.rows
@@ -574,11 +595,10 @@ const createNewTaskInSheet = async (newTaskData) => {
       } else if (data.values) {
         rows = data.values.map((row) => ({ c: row.map((val) => ({ v: val })) }))
       }
-
-      // Inside the fetchSheetData function, update the data processing section:
+  
       rows.forEach((row, rowIndex) => {
-        if (rowIndex === 0) return // Skip header row
-
+        if (rowIndex === 0) return
+  
         let rowValues = []
         if (row.c) {
           rowValues = row.c.map((cell) => (cell && cell.v !== undefined ? cell.v : ""))
@@ -587,47 +607,53 @@ const createNewTaskInSheet = async (newTaskData) => {
         } else {
           return
         }
-
+  
         const googleSheetsRowIndex = rowIndex + 1
         const taskId = rowValues[1] || ""
         const stableId = taskId
           ? `task_${taskId}_${googleSheetsRowIndex}`
           : `row_${googleSheetsRowIndex}_${Math.random().toString(36).substring(2, 15)}`
-
+  
         const rowData = {
           _id: stableId,
           _rowIndex: googleSheetsRowIndex,
           _taskId: taskId,
         }
-
-        // Map all columns including timestamp (column A)
+  
+        // Map all columns
         for (let i = 0; i < 21; i++) {
           if (i === 0 || i === 6 || i === 10) {
-            // Column A (0), G (6), K (10) are dates
             rowData[`col${i}`] = rowValues[i] ? parseGoogleSheetsDate(String(rowValues[i])) : ""
           } else {
             rowData[`col${i}`] = rowValues[i] || ""
           }
         }
-
-        // ✅ NEW: Skip rows where Column L (col11) has a value
-        // const actualValue = rowData["col11"] // Column L (Actual)
-        // if (!isEmpty(actualValue)) {
-        //   return // Skip this row if Column L is not empty
-        // }
-
-        // ✅ User filtering logic
+  
+        // Apply filtering based on user role
         if (userRole !== "admin") {
+          // ✅ Regular user: Show only tasks assigned to them
           const taskAssignedTo = rowData["col4"] // Column E (Name)
           if (!taskAssignedTo || taskAssignedTo.toLowerCase().trim() !== username.toLowerCase().trim()) {
-            return // Skip if not assigned to this user
+            return
+          }
+        } else if (userRole === "admin") {
+          // ✅ Admin: Show tasks from their department
+          // Only filter if adminDepartment is available and not empty
+          if (adminDepartment && adminDepartment.toLowerCase() !== "all") {
+            const taskDepartment = rowData["col2"] // Column C (Department)
+            console.log(`Checking: Admin dept = "${adminDepartment}", Task dept = "${taskDepartment}"`)
+            
+            if (!taskDepartment || taskDepartment.toLowerCase().trim() !== adminDepartment.toLowerCase().trim()) {
+              return
+            }
           }
         }
-
+  
         allDelegationData.push(rowData)
       })
-
-
+  
+      console.log(`Loaded ${allDelegationData.length} tasks for user: ${username}, role: ${userRole}, dept: ${adminDepartment}`)
+      
       setAccountData(allDelegationData)
       setDelegationData(allDelegationData)
       setLoading(false)
@@ -636,8 +662,16 @@ const createNewTaskInSheet = async (newTaskData) => {
       setError("Failed to load account data: " + error.message)
       setLoading(false)
     }
-  }, [formatDateToDDMMYYYY, parseGoogleSheetsDate, parseDateFromDDMMYYYY, isEmpty, userRole, username])
-
+  }, [formatDateToDDMMYYYY, parseGoogleSheetsDate, parseDateFromDDMMYYYY, isEmpty, userRole, username, adminDepartment]) // ✅ Added adminDepartment
+  
+  // 2. Update the useEffect that triggers fetchSheetData to wait for adminDepartment:
+  useEffect(() => {
+    // Only fetch if we have the required role and username
+    if (userRole && username) {
+      console.log(`Starting fetch: userRole=${userRole}, username=${username}, adminDepartment=${adminDepartment}`)
+      fetchSheetData()
+    }
+  }, [userRole, username, adminDepartment, fetchSheetData]) 
   useEffect(() => {
     fetchSheetData()
   }, [fetchSheetData])

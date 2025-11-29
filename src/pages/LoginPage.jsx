@@ -9,7 +9,8 @@ const LoginPage = () => {
   const [isLoginLoading, setIsLoginLoading] = useState(false)
   const [masterData, setMasterData] = useState({
     userCredentials: {}, // Object where keys are usernames and values are passwords
-    userRoles: {} // Object where keys are usernames and values are roles
+    userRoles: {}, // Object where keys are usernames and values are roles
+    userDepartments: {}
   })
   const [formData, setFormData] = useState({
     username: "",
@@ -31,46 +32,51 @@ const LoginPage = () => {
       normalizedRole === "in activ";
   }
 
-  // Fetch master data on component mount
   useEffect(() => {
     const fetchMasterData = async () => {
       const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzXDZKaK19qMnm2SdqDjEMzusD5vFISI9IRH4ce4xFlTggpElU9ikpJU2ULfkGqvf9VMA/exec"
-
+  
       try {
         setIsDataLoading(true)
-
+  
         // Get the spreadsheet ID from your Apps Script
         const SPREADSHEET_ID = "1hP6T2p2raJaxNSG3LtFbnIexNxJmU2TskmKDwaBX2hE"
-
+  
         // Construct the URL to read the sheet data directly
         const sheetUrl = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=master`
-
+  
         const response = await fetch(sheetUrl)
         const text = await response.text()
-
+  
         // Parse the Google Sheets JSON response
         const jsonString = text.substring(47).slice(0, -2) // Remove Google's wrapper
         const data = JSON.parse(jsonString)
-
-        // Create userCredentials and userRoles objects from the sheet data
+  
+        // Create userCredentials, userRoles, and userDepartments objects from the sheet data
         const userCredentials = {}
         const userRoles = {}
-
+        const userDepartments = {} // NEW: Store departments
+  
         // Process the data rows (skip header row if it exists)
         if (data.table && data.table.rows) {
           console.log("Raw sheet data:", data.table.rows);
-
+  
           // Start from index 1 to skip header row (adjust if needed)
           for (let i = 1; i < data.table.rows.length; i++) {
             const row = data.table.rows[i]
-
-            // Extract data from columns C, D, E (indices 2, 3, 4)
+  
+            // Extract data from columns:
+            // Column A (0) = Department
+            // Column C (2) = Username
+            // Column D (3) = Password
+            // Column E (4) = Role
+            const department = row.c[0] ? String(row.c[0].v || '').trim() : '';
             const username = row.c[2] ? String(row.c[2].v || '').trim().toLowerCase() : '';
             const password = row.c[3] ? String(row.c[3].v || '').trim() : '';
             const role = row.c[4] ? String(row.c[4].v || '').trim() : 'user';
-
-            console.log(`Processing row ${i}: username=${username}, password=${password}, role=${role}`);
-
+  
+            console.log(`Processing row ${i}: department=${department}, username=${username}, password=${password}, role=${role}`);
+  
             // Only process if we have both username and password
             if (username && password && password.trim() !== '') {
               // Check if the role is any kind of inactive status
@@ -78,40 +84,42 @@ const LoginPage = () => {
                 console.log(`Skipping inactive user: ${username} with role: ${role}`);
                 continue; // Skip this user
               }
-
+  
               // Store normalized role for comparison
               const normalizedRole = role.toLowerCase();
-
+  
               // Store in our maps
               userCredentials[username] = password;
               userRoles[username] = normalizedRole;
-
-              console.log(`Added credential for: ${username}, Role: ${normalizedRole}`);
+              userDepartments[username] = department; // NEW: Store department
+  
+              console.log(`Added credential for: ${username}, Role: ${normalizedRole}, Department: ${department}`);
             }
           }
         }
-
-        setMasterData({ userCredentials, userRoles })
+  
+        setMasterData({ userCredentials, userRoles, userDepartments })
         console.log("Loaded credentials from master sheet:", Object.keys(userCredentials).length)
         console.log("Credentials map:", userCredentials)
         console.log("Roles map:", userRoles)
-
+        console.log("Departments map:", userDepartments) // NEW: Log departments
+  
         // Debug - check admin roles specifically
         const adminUsers = Object.entries(userRoles)
           .filter(([, role]) => role === 'admin')
           .map(([username]) => username);
         console.log("Admin users found:", adminUsers);
-
+  
       } catch (error) {
         console.error("Error Fetching Master Data:", error)
-
+  
         // Fallback: Try the alternative method using your Apps Script
         try {
           console.log("Trying alternative method...");
           const fallbackResponse = await fetch(SCRIPT_URL, {
             method: 'GET'
           })
-
+  
           if (fallbackResponse.ok) {
             console.log("Apps Script is accessible, but getMasterData action needs to be implemented");
             showToast("Unable to load user data. Please contact administrator.", "error")
@@ -119,13 +127,13 @@ const LoginPage = () => {
         } catch (fallbackError) {
           console.error("Fallback also failed:", fallbackError);
         }
-
+  
         showToast(`Network error: ${error.message}. Please try again later.`, "error")
       } finally {
         setIsDataLoading(false)
       }
     }
-
+  
     fetchMasterData()
   }, [])
 
@@ -137,54 +145,59 @@ const LoginPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setIsLoginLoading(true)
-
+  
     try {
       const trimmedUsername = formData.username.trim().toLowerCase()
       const trimmedPassword = formData.password.trim()
-
+  
       console.log("Login Attempt Details:")
       console.log("Entered Username:", trimmedUsername)
-      console.log("Entered Password:", trimmedPassword) // For debugging (remove in production)
+      console.log("Entered Password:", trimmedPassword)
       console.log("Available Credentials Count:", Object.keys(masterData.userCredentials).length)
       console.log("Current userCredentials:", masterData.userCredentials)
       console.log("Current userRoles:", masterData.userRoles)
-
+      console.log("Current userDepartments:", masterData.userDepartments) // NEW: Log departments
+  
       // Check if the username exists in our credentials map
       if (trimmedUsername in masterData.userCredentials) {
         const correctPassword = masterData.userCredentials[trimmedUsername]
         const userRole = masterData.userRoles[trimmedUsername]
-
+        const userDepartment = masterData.userDepartments[trimmedUsername] // NEW: Get department
+  
         console.log("Found user in credentials map")
         console.log("Expected Password:", correctPassword)
         console.log("Password Match:", correctPassword === trimmedPassword)
         console.log("User Role:", userRole)
-
+        console.log("User Department:", userDepartment) // NEW: Log department
+  
         // Check if password matches
         if (correctPassword === trimmedPassword) {
           // Store user info in sessionStorage
           sessionStorage.setItem('username', trimmedUsername)
-
+  
           // Check if user is admin - explicitly compare with the string "admin"
           const isAdmin = userRole === "admin";
           console.log(`User ${trimmedUsername} is admin: ${isAdmin}`);
-
+  
           // Set role based on the fetched role
           sessionStorage.setItem('role', isAdmin ? 'admin' : 'user')
-
-          // For admin users, we don't want to restrict by department
+  
+          // NEW: FIXED - Set department for all users
           if (isAdmin) {
-            sessionStorage.setItem('department', 'all') // Admin sees all departments
-            sessionStorage.setItem('isAdmin', 'true') // Additional flag to ensure admin permissions
-            console.log("ADMIN LOGIN - Setting full access permissions");
+            // Admin users see all departments - store their actual department
+            sessionStorage.setItem('department', userDepartment || 'all')
+            sessionStorage.setItem('isAdmin', 'true')
+            console.log(`ADMIN LOGIN - Department: ${userDepartment}`);
           } else {
-            sessionStorage.setItem('department', trimmedUsername)
+            // Regular users see only their department
+            sessionStorage.setItem('department', userDepartment || trimmedUsername)
             sessionStorage.setItem('isAdmin', 'false')
-            console.log("USER LOGIN - Setting restricted access");
+            console.log(`USER LOGIN - Department: ${userDepartment}`);
           }
-
+  
           // Navigate to dashboard
           navigate("/dashboard/admin")
-
+  
           showToast(`Login successful. Welcome, ${trimmedUsername}!`, "success")
           return
         } else {
@@ -193,7 +206,7 @@ const LoginPage = () => {
       } else {
         showToast("Username or password is incorrect. Please try again.", "error")
       }
-
+  
       // If we got here, login failed
       console.error("Login Failed", {
         usernameExists: trimmedUsername in masterData.userCredentials,

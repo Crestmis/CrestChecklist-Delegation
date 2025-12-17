@@ -713,7 +713,7 @@ function DelegationDataPage() {
                   : [];
 
                 // Map all columns including column H (col7) for user filtering, column I (col8) for Task, and column P (col15) for Admin Done
-                for (let i = 0; i < 16; i++) {
+                for (let i = 0; i <= 16; i++) {
                   if (i === 0 || i === 6 || i === 10) {
                     rowData[`col${i}`] = rowValues[i]
                       ? parseGoogleSheetsDate(String(rowValues[i]))
@@ -891,7 +891,7 @@ function DelegationDataPage() {
 
   const handleSelectAllItems = useCallback(
     (e) => {
-      e.stopPropagation();
+      // e.stopPropagation();
       const checked = e.target.checked;
 
       if (checked) {
@@ -1417,12 +1417,15 @@ function DelegationDataPage() {
   const fillteredHistoryDataByMainAdmin =
     sessionStorage.getItem("role") === "main admin"
       ? filteredHistoryData
-      : filteredHistoryData.filter((item) => item["col2"] === department);
+      : filteredHistoryData.filter((item) => item["col16"] === department);
 
   const filteredAccountDataByMainAdming =
     userRole === "main admin"
       ? filteredAccountData
       : filteredAccountData.filter((item) => item["col2"] === department);
+
+
+      console.log("filteredHistoryData",filteredHistoryData);
 
   return (
     <AdminLayout>
@@ -1471,8 +1474,8 @@ function DelegationDataPage() {
             {!showHistory && (
               <button
                 onClick={
-                  userRole !== "admin" &&
-                  userRole !== "main admin" &&
+                  // userRole !== "admin" &&
+                  // userRole !== "main admin" &&
                   handleSubmit
                 }
                 disabled={selectedItemsCount === 0 || isSubmitting}

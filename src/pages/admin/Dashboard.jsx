@@ -103,6 +103,7 @@ export default function AdminDashboard() {
       return taskStartDate >= startDate && taskStartDate <= endDate;
     });
 
+
     // Count statistics
     let totalTasks = filteredTasks.length;
     let completedTasks = 0;
@@ -207,8 +208,9 @@ export default function AdminDashboard() {
     if (!dateStr) return "";
 
     if (typeof dateStr === "string" && dateStr.startsWith("Date(")) {
-      // Handle Google Sheets Date(year,month,day) format
-      const match = /Date\((\d+),(\d+),(\d+)\)/.exec(dateStr);
+      // Handle Google Sheets Date format - supports both Date(year,month,day)
+      // and Date(year,month,day,hours,minutes,seconds) formats
+      const match = /Date\((\d+),(\d+),(\d+)(?:,\d+,\d+,\d+)?\)/.exec(dateStr);
       if (match) {
         const year = parseInt(match[1], 10);
         const month = parseInt(match[2], 10); // 0-indexed in Google's format
@@ -265,6 +267,8 @@ export default function AdminDashboard() {
   // Modified fetch function to support both checklist and delegation
   const fetchDepartmentData = async () => {
     // For delegation mode, always use "DELEGATION" sheet
+
+    console.log(dashboardType, "fjkdfjkfjdkf");
     // For checklist mode, use "Checklist" as default sheet
     const sheetName =
       dashboardType === "delegation" ? "DELEGATION" : "Checklist";
@@ -287,6 +291,8 @@ export default function AdminDashboard() {
       const jsonEnd = text.lastIndexOf("}");
       const jsonString = text.substring(jsonStart, jsonEnd + 1);
       const data = JSON.parse(jsonString);
+
+      console.log(data, "data");
 
       // Get current user details
       const username = sessionStorage.getItem("username");
@@ -343,21 +349,9 @@ export default function AdminDashboard() {
       const processedRows = data.table.rows
         .map((row, rowIndex) => {
           // Skip header row
+
           if (rowIndex === 0) return null;
 
-          // // For non-admin users, filter by username in Column E (index 4) - "Name"
-          // const assignedTo = getCellValue(row, 4) || 'Unassigned';
-          // const isUserMatch = userRole === 'admin' || userRole === 'main admin' ||
-          //   assignedTo.toLowerCase() === username.toLowerCase();
-
-          // // Debug: Log user matching for first few rows
-
-          // // If not a match and not admin, skip this row
-          // if (!isUserMatch) {
-          //   return null;
-          // }
-
-          // Get department from Column C (index 2)
           const taskDepartment = getCellValue(row, 2) || "";
 
           // Get assigned person from Column E (index 4) - "Name"
@@ -366,18 +360,34 @@ export default function AdminDashboard() {
           // Filter logic based on role and department
           let shouldIncludeRow = false;
 
-          if (userRole === "main admin") {
+          // Normalize role for case-insensitive comparison
+          const normalizedRole = (userRole || "").toLowerCase().trim();
+
+          if (normalizedRole === "main admin") {
             // Main admin sees everything
             shouldIncludeRow = true;
-          } else if (userRole === "admin") {
+          } else if (normalizedRole === "admin") {
             // Admin sees only their department's data
             shouldIncludeRow =
-              taskDepartment.toLowerCase() === userDepartment.toLowerCase();
+              taskDepartment.toLowerCase() ===
+              (userDepartment || "").toLowerCase();
           } else {
             // Regular users see only their own tasks in their department
             shouldIncludeRow =
-              taskDepartment.toLowerCase() === userDepartment.toLowerCase() &&
-              assignedTo.toLowerCase() === username.toLowerCase();
+              taskDepartment.toLowerCase() ===
+                (userDepartment || "").toLowerCase() &&
+              assignedTo.toLowerCase() === (username || "").toLowerCase();
+          }
+
+          // Debug: Log first few filter decisions
+
+          if (rowIndex <= 5) {
+            console.log(`Row ${rowIndex} filter:`, {
+              normalizedRole,
+              taskDepartment,
+              assignedTo,
+              shouldIncludeRow,
+            });
           }
 
           // If not a match, skip this row
@@ -601,6 +611,16 @@ export default function AdminDashboard() {
         })
         .filter((task) => task !== null);
 
+      // Debug: Log processed tasks count
+      console.log("Processed tasks after filtering:", processedRows.length);
+      console.log("First 5 processed tasks:", processedRows.slice(0, 5));
+      console.log("Task counters:", {
+        totalTasks,
+        completedTasks,
+        pendingTasks,
+        overdueTasks,
+      });
+
       // Calculate completion rate
       const completionRate =
         totalTasks > 0 ? ((completedTasks / totalTasks) * 100).toFixed(1) : 0;
@@ -712,6 +732,18 @@ export default function AdminDashboard() {
 
   // UPDATED: Get tasks by view with updated delegation logic
   const getTasksByView = (view) => {
+    // Debug: Log filteredTasks before view filtering
+    console.log("getTasksByView called with view:", view);
+    console.log("filteredTasks count:", filteredTasks.length);
+    console.log(
+      "Sample filteredTasks (first 3):",
+      filteredTasks.slice(0, 3).map((t) => ({
+        id: t.id,
+        status: t.status,
+        taskStartDate: t.taskStartDate,
+      }))
+    );
+
     const viewFilteredTasks = filteredTasks.filter((task) => {
       // Skip completed tasks in all views
       if (task.status === "completed") return false;
@@ -860,43 +892,43 @@ export default function AdminDashboard() {
   // Staff Tasks Table Component
   const StaffTasksTable = () => {
     return (
-      <div className="rounded-md border border-gray-200 overflow-x-auto">
+      <div className="overflow-x-auto border border-gray-200 rounded-md">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
               <th
                 scope="col"
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase"
               >
                 Name
               </th>
               <th
                 scope="col"
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase"
               >
                 Total Tasks
               </th>
               <th
                 scope="col"
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase"
               >
                 Completed
               </th>
               <th
                 scope="col"
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase"
               >
                 Pending
               </th>
               <th
                 scope="col"
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase"
               >
                 Progress
               </th>
               <th
                 scope="col"
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase"
               >
                 Status
               </th>
@@ -913,20 +945,20 @@ export default function AdminDashboard() {
                     <div className="text-xs text-gray-500">{staff.email}</div>
                   </div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
                   {staff.totalTasks}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
                   {staff.completedTasks}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
                   {staff.pendingTasks}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex items-center gap-2">
                     <div className="w-[100px] bg-gray-200 rounded-full h-2">
                       <div
-                        className="bg-blue-600 h-2 rounded-full"
+                        className="h-2 bg-blue-600 rounded-full"
                         style={{ width: `${staff.progress}%` }}
                       ></div>
                     </div>
@@ -937,15 +969,15 @@ export default function AdminDashboard() {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   {staff.progress >= 80 ? (
-                    <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                    <span className="inline-flex px-2 py-1 text-xs font-semibold leading-5 text-green-800 bg-green-100 rounded-full">
                       Excellent
                     </span>
                   ) : staff.progress >= 60 ? (
-                    <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                    <span className="inline-flex px-2 py-1 text-xs font-semibold leading-5 text-yellow-800 bg-yellow-100 rounded-full">
                       Good
                     </span>
                   ) : (
-                    <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                    <span className="inline-flex px-2 py-1 text-xs font-semibold leading-5 text-red-800 bg-red-100 rounded-full">
                       Needs Improvement
                     </span>
                   )}
@@ -981,10 +1013,10 @@ export default function AdminDashboard() {
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-lg border border-l-4 border-l-blue-500 shadow-md hover:shadow-lg transition-all bg-white">
-            <div className="flex flex-row items-center justify-between space-y-0 pb-2 bg-gradient-to-r from-blue-50 to-blue-100 rounded-tr-lg p-4">
+          <div className="transition-all bg-white border border-l-4 rounded-lg shadow-md border-l-blue-500 hover:shadow-lg">
+            <div className="flex flex-row items-center justify-between p-4 pb-2 space-y-0 rounded-tr-lg bg-gradient-to-r from-blue-50 to-blue-100">
               <h3 className="text-sm font-medium text-blue-700">Total Tasks</h3>
-              <ListTodo className="h-4 w-4 text-blue-500" />
+              <ListTodo className="w-4 h-4 text-blue-500" />
             </div>
             <div className="p-4">
               <div className="text-3xl font-bold text-blue-700">
@@ -998,14 +1030,14 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <div className="rounded-lg border border-l-4 border-l-green-500 shadow-md hover:shadow-lg transition-all bg-white">
-            <div className="flex flex-row items-center justify-between space-y-0 pb-2 bg-gradient-to-r from-green-50 to-green-100 rounded-tr-lg p-4">
+          <div className="transition-all bg-white border border-l-4 rounded-lg shadow-md border-l-green-500 hover:shadow-lg">
+            <div className="flex flex-row items-center justify-between p-4 pb-2 space-y-0 rounded-tr-lg bg-gradient-to-r from-green-50 to-green-100">
               <h3 className="text-sm font-medium text-green-700">
                 {dashboardType === "delegation"
                   ? "Completed Once"
                   : "Completed Tasks"}
               </h3>
-              <CheckCircle2 className="h-4 w-4 text-green-500" />
+              <CheckCircle2 className="w-4 h-4 text-green-500" />
             </div>
             <div className="p-4">
               <div className="text-3xl font-bold text-green-700">
@@ -1021,17 +1053,17 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <div className="rounded-lg border border-l-4 border-l-amber-500 shadow-md hover:shadow-lg transition-all bg-white">
-            <div className="flex flex-row items-center justify-between space-y-0 pb-2 bg-gradient-to-r from-amber-50 to-amber-100 rounded-tr-lg p-4">
+          <div className="transition-all bg-white border border-l-4 rounded-lg shadow-md border-l-amber-500 hover:shadow-lg">
+            <div className="flex flex-row items-center justify-between p-4 pb-2 space-y-0 rounded-tr-lg bg-gradient-to-r from-amber-50 to-amber-100">
               <h3 className="text-sm font-medium text-amber-700">
                 {dashboardType === "delegation"
                   ? "Completed Twice"
                   : "Pending Tasks"}
               </h3>
               {dashboardType === "delegation" ? (
-                <CheckCircle2 className="h-4 w-4 text-amber-500" />
+                <CheckCircle2 className="w-4 h-4 text-amber-500" />
               ) : (
-                <Clock className="h-4 w-4 text-amber-500" />
+                <Clock className="w-4 h-4 text-amber-500" />
               )}
             </div>
             <div className="p-4">
@@ -1048,17 +1080,17 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <div className="rounded-lg border border-l-4 border-l-red-500 shadow-md hover:shadow-lg transition-all bg-white">
-            <div className="flex flex-row items-center justify-between space-y-0 pb-2 bg-gradient-to-r from-red-50 to-red-100 rounded-tr-lg p-4">
+          <div className="transition-all bg-white border border-l-4 rounded-lg shadow-md border-l-red-500 hover:shadow-lg">
+            <div className="flex flex-row items-center justify-between p-4 pb-2 space-y-0 rounded-tr-lg bg-gradient-to-r from-red-50 to-red-100">
               <h3 className="text-sm font-medium text-red-700">
                 {dashboardType === "delegation"
                   ? "Completed 3+ Times"
                   : "Overdue Tasks"}
               </h3>
               {dashboardType === "delegation" ? (
-                <CheckCircle2 className="h-4 w-4 text-red-500" />
+                <CheckCircle2 className="w-4 h-4 text-red-500" />
               ) : (
-                <AlertTriangle className="h-4 w-4 text-red-500" />
+                <AlertTriangle className="w-4 h-4 text-red-500" />
               )}
             </div>
             <div className="p-4">
@@ -1077,7 +1109,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Task Navigation Tabs - Restored to 3 tabs for both modes */}
-        <div className="w-full overflow-hidden rounded-lg border border-gray-200 bg-white">
+        <div className="w-full overflow-hidden bg-white border border-gray-200 rounded-lg">
           <div className="grid grid-cols-3">
             <button
               className={`py-3 text-center font-medium transition-colors ${
@@ -1114,13 +1146,13 @@ export default function AdminDashboard() {
           </div>
 
           <div className="p-4">
-            <div className="flex flex-col gap-4 md:flex-row mb-4">
+            <div className="flex flex-col gap-4 mb-4 md:flex-row">
               <div className="flex-1 space-y-2">
                 <label
                   htmlFor="search"
                   className="flex items-center text-purple-700"
                 >
-                  <Filter className="h-4 w-4 mr-2" />
+                  <Filter className="w-4 h-4 mr-2" />
                   Search Tasks
                 </label>
                 <input
@@ -1128,7 +1160,7 @@ export default function AdminDashboard() {
                   placeholder="Search by task title or ID"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full rounded-md border border-purple-200 p-2 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  className="w-full p-2 border border-purple-200 rounded-md focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
                 />
               </div>
               <div className="space-y-2 md:w-[180px]">
@@ -1136,14 +1168,14 @@ export default function AdminDashboard() {
                   htmlFor="staff-filter"
                   className="flex items-center text-purple-700"
                 >
-                  <Filter className="h-4 w-4 mr-2" />
+                  <Filter className="w-4 h-4 mr-2" />
                   Filter by Staff
                 </label>
                 <select
                   id="staff-filter"
                   value={filterStaff}
                   onChange={(e) => setFilterStaff(e.target.value)}
-                  className="w-full rounded-md border border-purple-200 p-2 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  className="w-full p-2 border border-purple-200 rounded-md focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
                 >
                   <option value="all">All Staff</option>
                   {departmentData.staffMembers.map((staff) => (
@@ -1156,7 +1188,7 @@ export default function AdminDashboard() {
             </div>
 
             {getTasksByView(taskView).length === 0 ? (
-              <div className="text-center p-8 text-gray-500">
+              <div className="p-8 text-center text-gray-500">
                 <p>No tasks found matching your filters.</p>
               </div>
             ) : (
@@ -1165,35 +1197,35 @@ export default function AdminDashboard() {
                 style={{ maxHeight: "400px", overflowY: "auto" }}
               >
                 <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50 sticky top-0 z-10">
+                  <thead className="sticky top-0 z-10 bg-gray-50">
                     <tr>
                       <th
                         scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase"
                       >
                         Task ID
                       </th>
                       <th
                         scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase"
                       >
                         Task Description
                       </th>
                       <th
                         scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase"
                       >
                         Assigned To
                       </th>
                       <th
                         scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase"
                       >
                         Task Start Date
                       </th>
                       <th
                         scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase"
                       >
                         Frequency
                       </th>
@@ -1202,16 +1234,16 @@ export default function AdminDashboard() {
                   <tbody className="bg-white divide-y divide-gray-200">
                     {getTasksByView(taskView).map((task) => (
                       <tr key={task.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap">
                           {task.id}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
                           {task.title}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
                           {task.assignedTo}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
                           {task.taskStartDate}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -1234,12 +1266,12 @@ export default function AdminDashboard() {
         </div>
 
         <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-1">
-          <div className="rounded-lg border border-l-4 border-l-indigo-500 shadow-md hover:shadow-lg transition-all bg-white">
-            <div className="flex flex-row items-center justify-between space-y-0 pb-2 bg-gradient-to-r from-indigo-50 to-indigo-100 rounded-tr-lg p-4">
+          <div className="transition-all bg-white border border-l-4 rounded-lg shadow-md border-l-indigo-500 hover:shadow-lg">
+            <div className="flex flex-row items-center justify-between p-4 pb-2 space-y-0 rounded-tr-lg bg-gradient-to-r from-indigo-50 to-indigo-100">
               <h3 className="text-sm font-medium text-indigo-700">
                 Task Completion Rate
               </h3>
-              <BarChart3 className="h-4 w-4 text-indigo-500" />
+              <BarChart3 className="w-4 h-4 text-indigo-500" />
             </div>
             <div className="p-4">
               <div className="flex items-center justify-between">
@@ -1251,15 +1283,15 @@ export default function AdminDashboard() {
                   <span className="text-xs text-gray-600">
                     Completed: {departmentData.completedTasks}
                   </span>
-                  <span className="inline-block w-3 h-3 bg-amber-500 rounded-full"></span>
+                  <span className="inline-block w-3 h-3 rounded-full bg-amber-500"></span>
                   <span className="text-xs text-gray-600">
                     Total: {departmentData.totalTasks}
                   </span>
                 </div>
               </div>
-              <div className="w-full h-2 bg-gray-200 rounded-full mt-2">
+              <div className="w-full h-2 mt-2 bg-gray-200 rounded-full">
                 <div
-                  className="h-full bg-gradient-to-r from-green-500 to-amber-500 rounded-full"
+                  className="h-full rounded-full bg-gradient-to-r from-green-500 to-amber-500"
                   style={{ width: `${departmentData.completionRate}%` }}
                 ></div>
               </div>
@@ -1269,7 +1301,7 @@ export default function AdminDashboard() {
 
         {/* Tabs */}
         <div className="space-y-4">
-          <div className="bg-purple-100 rounded-md p-1 flex space-x-1">
+          <div className="flex p-1 space-x-1 bg-purple-100 rounded-md">
             <button
               onClick={() => setActiveTab("overview")}
               className={`flex-1 py-2 text-center rounded-md transition-colors ${
@@ -1305,12 +1337,12 @@ export default function AdminDashboard() {
           {activeTab === "overview" && (
             <div className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-                <div className="lg:col-span-4 rounded-lg border border-purple-200 shadow-md bg-white">
-                  <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-b border-purple-100 p-4">
-                    <h3 className="text-purple-700 font-medium">
+                <div className="bg-white border border-purple-200 rounded-lg shadow-md lg:col-span-4">
+                  <div className="p-4 border-b border-purple-100 bg-gradient-to-r from-purple-50 to-pink-50">
+                    <h3 className="font-medium text-purple-700">
                       Tasks Overview
                     </h3>
-                    <p className="text-purple-600 text-sm">
+                    <p className="text-sm text-purple-600">
                       Task completion rate over time
                     </p>
                   </div>
@@ -1318,10 +1350,10 @@ export default function AdminDashboard() {
                     <TasksOverviewChart />
                   </div>
                 </div>
-                <div className="lg:col-span-3 rounded-lg border border-purple-200 shadow-md bg-white">
-                  <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-b border-purple-100 p-4">
-                    <h3 className="text-purple-700 font-medium">Task Status</h3>
-                    <p className="text-purple-600 text-sm">
+                <div className="bg-white border border-purple-200 rounded-lg shadow-md lg:col-span-3">
+                  <div className="p-4 border-b border-purple-100 bg-gradient-to-r from-purple-50 to-pink-50">
+                    <h3 className="font-medium text-purple-700">Task Status</h3>
+                    <p className="text-sm text-purple-600">
                       Distribution of tasks by status
                     </p>
                   </div>
@@ -1330,12 +1362,12 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               </div>
-              <div className="rounded-lg border border-purple-200 shadow-md bg-white">
-                <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-b border-purple-100 p-4">
-                  <h3 className="text-purple-700 font-medium">
+              <div className="bg-white border border-purple-200 rounded-lg shadow-md">
+                <div className="p-4 border-b border-purple-100 bg-gradient-to-r from-purple-50 to-pink-50">
+                  <h3 className="font-medium text-purple-700">
                     Staff Task Summary
                   </h3>
-                  <p className="text-purple-600 text-sm">
+                  <p className="text-sm text-purple-600">
                     Overview of tasks assigned to each staff member
                   </p>
                 </div>
@@ -1348,10 +1380,10 @@ export default function AdminDashboard() {
 
           {/* UPDATED: Modified MIS Report section for delegation mode */}
           {activeTab === "mis" && (
-            <div className="rounded-lg border border-purple-200 shadow-md bg-white">
-              <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-b border-purple-100 p-4">
-                <h3 className="text-purple-700 font-medium">MIS Report</h3>
-                <p className="text-purple-600 text-sm">
+            <div className="bg-white border border-purple-200 rounded-lg shadow-md">
+              <div className="p-4 border-b border-purple-100 bg-gradient-to-r from-purple-50 to-pink-50">
+                <h3 className="font-medium text-purple-700">MIS Report</h3>
+                <p className="text-sm text-purple-600">
                   {dashboardType === "delegation"
                     ? "Detailed delegation analytics - all tasks from sheet data"
                     : "Detailed task analytics and performance metrics"}
@@ -1361,11 +1393,11 @@ export default function AdminDashboard() {
                 <div className="space-y-8">
                   {/* UPDATED: Only show date range selection for checklist mode */}
                   {dashboardType !== "delegation" && (
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 bg-gray-50 p-4 rounded-lg border border-gray-100">
+                    <div className="grid gap-4 p-4 border border-gray-100 rounded-lg md:grid-cols-2 lg:grid-cols-4 bg-gray-50">
                       <div className="space-y-2 lg:col-span-1">
                         <label
                           htmlFor="start-date"
-                          className="flex items-center text-purple-700 text-sm font-medium"
+                          className="flex items-center text-sm font-medium text-purple-700"
                         >
                           Start Date
                         </label>
@@ -1379,13 +1411,13 @@ export default function AdminDashboard() {
                               startDate: e.target.value,
                             }))
                           }
-                          className="w-full rounded-md border border-purple-200 p-2 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                          className="w-full p-2 border border-purple-200 rounded-md focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
                         />
                       </div>
                       <div className="space-y-2 lg:col-span-1">
                         <label
                           htmlFor="end-date"
-                          className="flex items-center text-purple-700 text-sm font-medium"
+                          className="flex items-center text-sm font-medium text-purple-700"
                         >
                           End Date
                         </label>
@@ -1399,13 +1431,13 @@ export default function AdminDashboard() {
                               endDate: e.target.value,
                             }))
                           }
-                          className="w-full rounded-md border border-purple-200 p-2 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                          className="w-full p-2 border border-purple-200 rounded-md focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
                         />
                       </div>
-                      <div className="space-y-2 lg:col-span-2 flex items-end">
+                      <div className="flex items-end space-y-2 lg:col-span-2">
                         <button
                           onClick={filterTasksByDateRange}
-                          className="w-full bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded transition-colors"
+                          className="w-full px-4 py-2 text-white transition-colors bg-purple-600 rounded hover:bg-purple-700"
                         >
                           Apply Filter
                         </button>
@@ -1474,63 +1506,63 @@ export default function AdminDashboard() {
 
                   {/* UPDATED: Additional breakdown - only for checklist with date filtering */}
                   {dashboardType !== "delegation" && dateRange.filtered && (
-                    <div className="rounded-lg border border-purple-100 p-4 bg-gray-50">
-                      <h4 className="text-lg font-medium text-purple-700 mb-4">
+                    <div className="p-4 border border-purple-100 rounded-lg bg-gray-50">
+                      <h4 className="mb-4 text-lg font-medium text-purple-700">
                         Detailed Date Range Breakdown
                       </h4>
                       <div className="grid gap-4 md:grid-cols-3">
-                        <div className="bg-white p-3 rounded-lg border border-amber-200">
+                        <div className="p-3 bg-white border rounded-lg border-amber-200">
                           <div className="text-sm font-medium text-amber-700">
                             Pending Tasks
                           </div>
                           <div className="text-2xl font-bold text-amber-600">
                             {filteredDateStats.pendingTasks}
                           </div>
-                          <div className="text-xs text-amber-600 mt-1">
+                          <div className="mt-1 text-xs text-amber-600">
                             All incomplete tasks (including overdue + today)
                           </div>
                         </div>
-                        <div className="bg-white p-3 rounded-lg border border-red-200">
+                        <div className="p-3 bg-white border border-red-200 rounded-lg">
                           <div className="text-sm font-medium text-red-700">
                             Overdue Tasks
                           </div>
                           <div className="text-2xl font-bold text-red-600">
                             {filteredDateStats.overdueTasks}
                           </div>
-                          <div className="text-xs text-red-600 mt-1">
+                          <div className="mt-1 text-xs text-red-600">
                             Past due dates only (excluding today)
                           </div>
                         </div>
-                        <div className="bg-white p-3 rounded-lg border border-green-200">
+                        <div className="p-3 bg-white border border-green-200 rounded-lg">
                           <div className="text-sm font-medium text-green-700">
                             Completed Once
                           </div>
                           <div className="text-2xl font-bold text-green-600">
                             {departmentData.completedRatingOne}
                           </div>
-                          <div className="text-xs text-green-600 mt-1">
+                          <div className="mt-1 text-xs text-green-600">
                             Tasks with rating 1
                           </div>
                         </div>
-                        <div className="bg-white p-3 rounded-lg border border-amber-200">
+                        <div className="p-3 bg-white border rounded-lg border-amber-200">
                           <div className="text-sm font-medium text-amber-700">
                             Completed Twice
                           </div>
                           <div className="text-2xl font-bold text-amber-600">
                             {departmentData.completedRatingTwo}
                           </div>
-                          <div className="text-xs text-amber-600 mt-1">
+                          <div className="mt-1 text-xs text-amber-600">
                             Tasks with rating 2
                           </div>
                         </div>
-                        <div className="bg-white p-3 rounded-lg border border-red-200">
+                        <div className="p-3 bg-white border border-red-200 rounded-lg">
                           <div className="text-sm font-medium text-red-700">
                             Completed 3+ Times
                           </div>
                           <div className="text-2xl font-bold text-red-600">
                             {departmentData.completedRatingThreePlus}
                           </div>
-                          <div className="text-xs text-red-600 mt-1">
+                          <div className="mt-1 text-xs text-red-600">
                             Tasks with rating 3 or higher
                           </div>
                         </div>
@@ -1543,8 +1575,8 @@ export default function AdminDashboard() {
                       Department Performance
                     </h3>
                     <div className="grid gap-4 md:grid-cols-1">
-                      <div className="rounded-lg border border-purple-200 bg-white p-4">
-                        <h4 className="text-sm font-medium text-purple-700 mb-2">
+                      <div className="p-4 bg-white border border-purple-200 rounded-lg">
+                        <h4 className="mb-2 text-sm font-medium text-purple-700">
                           Completion Rate
                         </h4>
                         <div className="flex items-center gap-4">
@@ -1559,7 +1591,7 @@ export default function AdminDashboard() {
                           <div className="flex-1">
                             <div className="w-full h-6 bg-gray-200 rounded-full">
                               <div
-                                className="h-full rounded-full flex items-center justify-end px-3 text-xs font-medium text-white"
+                                className="flex items-center justify-end h-full px-3 text-xs font-medium text-white rounded-full"
                                 style={{
                                   width: `${
                                     dashboardType === "delegation"
@@ -1593,7 +1625,7 @@ export default function AdminDashboard() {
                             </div>
                           </div>
                         </div>
-                        <p className="text-xs text-purple-600 mt-2">
+                        <p className="mt-2 text-xs text-purple-600">
                           {dashboardType === "delegation"
                             ? `${departmentData.completedTasks} of ${departmentData.totalTasks} tasks completed in delegation mode (all sheet data)`
                             : `${
@@ -1615,12 +1647,12 @@ export default function AdminDashboard() {
           )}
 
           {activeTab === "staff" && (
-            <div className="rounded-lg border border-purple-200 shadow-md bg-white">
-              <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-b border-purple-100 p-4">
-                <h3 className="text-purple-700 font-medium">
+            <div className="bg-white border border-purple-200 rounded-lg shadow-md">
+              <div className="p-4 border-b border-purple-100 bg-gradient-to-r from-purple-50 to-pink-50">
+                <h3 className="font-medium text-purple-700">
                   Staff Performance
                 </h3>
-                <p className="text-purple-600 text-sm">
+                <p className="text-sm text-purple-600">
                   {dashboardType === "delegation"
                     ? "Task completion rates by staff member (all delegation sheet data)"
                     : "Task completion rates by staff member (tasks up to today only)"}
@@ -1641,8 +1673,8 @@ export default function AdminDashboard() {
                         return (
                           <>
                             {/* High performers section (70% or above) */}
-                            <div className="rounded-md border border-green-200">
-                              <div className="p-4 bg-gradient-to-r from-green-50 to-green-100 border-b border-green-200">
+                            <div className="border border-green-200 rounded-md">
+                              <div className="p-4 border-b border-green-200 bg-gradient-to-r from-green-50 to-green-100">
                                 <h3 className="text-lg font-medium text-green-700">
                                   Top Performers
                                 </h3>
@@ -1662,7 +1694,7 @@ export default function AdminDashboard() {
                                         className="flex items-center justify-between p-3 border border-green-100 rounded-md bg-green-50"
                                       >
                                         <div className="flex items-center gap-2">
-                                          <div className="h-10 w-10 rounded-full bg-gradient-to-r from-green-500 to-teal-500 flex items-center justify-center">
+                                          <div className="flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-r from-green-500 to-teal-500">
                                             <span className="text-sm font-medium text-white">
                                               {staff.name.charAt(0)}
                                             </span>
@@ -1685,7 +1717,7 @@ export default function AdminDashboard() {
                                   {sortedStaffMembers.filter(
                                     (staff) => staff.progress >= 70
                                   ).length === 0 && (
-                                    <div className="text-center p-4 text-gray-500">
+                                    <div className="p-4 text-center text-gray-500">
                                       <p>
                                         No staff members with high completion
                                         rates found.
@@ -1697,8 +1729,8 @@ export default function AdminDashboard() {
                             </div>
 
                             {/* Mid performers section (40-69%) */}
-                            <div className="rounded-md border border-yellow-200">
-                              <div className="p-4 bg-gradient-to-r from-yellow-50 to-yellow-100 border-b border-yellow-200">
+                            <div className="border border-yellow-200 rounded-md">
+                              <div className="p-4 border-b border-yellow-200 bg-gradient-to-r from-yellow-50 to-yellow-100">
                                 <h3 className="text-lg font-medium text-yellow-700">
                                   Average Performers
                                 </h3>
@@ -1722,7 +1754,7 @@ export default function AdminDashboard() {
                                         className="flex items-center justify-between p-3 border border-yellow-100 rounded-md bg-yellow-50"
                                       >
                                         <div className="flex items-center gap-2">
-                                          <div className="h-10 w-10 rounded-full bg-gradient-to-r from-yellow-500 to-amber-500 flex items-center justify-center">
+                                          <div className="flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-r from-yellow-500 to-amber-500">
                                             <span className="text-sm font-medium text-white">
                                               {staff.name.charAt(0)}
                                             </span>
@@ -1747,7 +1779,7 @@ export default function AdminDashboard() {
                                       staff.progress >= 40 &&
                                       staff.progress < 70
                                   ).length === 0 && (
-                                    <div className="text-center p-4 text-gray-500">
+                                    <div className="p-4 text-center text-gray-500">
                                       <p>
                                         No staff members with moderate
                                         completion rates found.
@@ -1759,8 +1791,8 @@ export default function AdminDashboard() {
                             </div>
 
                             {/* Low performers section (below 40%) */}
-                            <div className="rounded-md border border-red-200">
-                              <div className="p-4 bg-gradient-to-r from-red-50 to-red-100 border-b border-red-200">
+                            <div className="border border-red-200 rounded-md">
+                              <div className="p-4 border-b border-red-200 bg-gradient-to-r from-red-50 to-red-100">
                                 <h3 className="text-lg font-medium text-red-700">
                                   Needs Improvement
                                 </h3>
@@ -1780,7 +1812,7 @@ export default function AdminDashboard() {
                                         className="flex items-center justify-between p-3 border border-red-100 rounded-md bg-red-50"
                                       >
                                         <div className="flex items-center gap-2">
-                                          <div className="h-10 w-10 rounded-full bg-gradient-to-r from-red-500 to-pink-500 flex items-center justify-center">
+                                          <div className="flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-r from-red-500 to-pink-500">
                                             <span className="text-sm font-medium text-white">
                                               {staff.name.charAt(0)}
                                             </span>
@@ -1803,7 +1835,7 @@ export default function AdminDashboard() {
                                   {sortedStaffMembers.filter(
                                     (staff) => staff.progress < 40
                                   ).length === 0 && (
-                                    <div className="text-center p-4 text-gray-500">
+                                    <div className="p-4 text-center text-gray-500">
                                       <p>
                                         No staff members with low completion
                                         rates found.
@@ -1818,8 +1850,8 @@ export default function AdminDashboard() {
                             {departmentData.staffMembers.filter(
                               (staff) => staff.totalTasks === 0
                             ).length > 0 && (
-                              <div className="rounded-md border border-gray-200">
-                                <div className="p-4 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+                              <div className="border border-gray-200 rounded-md">
+                                <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
                                   <h3 className="text-lg font-medium text-gray-700">
                                     No Tasks Assigned
                                   </h3>
@@ -1839,7 +1871,7 @@ export default function AdminDashboard() {
                                           className="flex items-center justify-between p-3 border border-gray-100 rounded-md bg-gray-50"
                                         >
                                           <div className="flex items-center gap-2">
-                                            <div className="h-10 w-10 rounded-full bg-gradient-to-r from-gray-500 to-gray-600 flex items-center justify-center">
+                                            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-r from-gray-500 to-gray-600">
                                               <span className="text-sm font-medium text-white">
                                                 {staff.name.charAt(0)}
                                               </span>
@@ -1869,7 +1901,7 @@ export default function AdminDashboard() {
                       })()}
                     </>
                   ) : (
-                    <div className="text-center p-8 text-gray-500">
+                    <div className="p-8 text-center text-gray-500">
                       <p>
                         {dashboardType === "delegation"
                           ? "No delegation data available."

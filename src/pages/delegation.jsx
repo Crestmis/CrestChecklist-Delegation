@@ -851,7 +851,7 @@ function DelegationDataPage() {
 
       if (isChecked) {
         newSelected.add(id);
-        setStatusData((prevStatus) => ({ ...prevStatus, [id]: "Done" }));
+        // Don't pre-select status - let user choose from dropdown
       } else {
         newSelected.delete(id);
         setAdditionalData((prevData) => {
@@ -897,12 +897,7 @@ function DelegationDataPage() {
       if (checked) {
         const allIds = filteredAccountData.map((item) => item._id);
         setSelectedItems(new Set(allIds));
-
-        const newStatusData = {};
-        allIds.forEach((id) => {
-          newStatusData[id] = "Done";
-        });
-        setStatusData((prev) => ({ ...prev, ...newStatusData }));
+        // Don't pre-select status - let user choose from dropdown for each item
       } else {
         setSelectedItems(new Set());
         setAdditionalData({});
@@ -1291,6 +1286,13 @@ function DelegationDataPage() {
 
   const selectedItemsCount = selectedItems.size;
 
+  // Check if all selected items have a status selected
+  const allSelectedHaveStatus =
+    selectedItemsCount > 0 &&
+    Array.from(selectedItems).every(
+      (id) => statusData[id] && statusData[id] !== ""
+    );
+
   // NEW: Admin functions for history management
   const handleMarkMultipleDone = async () => {
     if (selectedHistoryItems.length === 0) {
@@ -1311,12 +1313,12 @@ function DelegationDataPage() {
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-        <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+        <div className="w-full max-w-md p-6 mx-4 bg-white rounded-lg shadow-xl">
           <div className="flex items-center justify-center mb-4">
-            <div className="bg-yellow-100 text-yellow-600 rounded-full p-3 mr-4">
+            <div className="p-3 mr-4 text-yellow-600 bg-yellow-100 rounded-full">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                className="h-6 w-6"
+                className="w-6 h-6"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -1334,7 +1336,7 @@ function DelegationDataPage() {
             </h2>
           </div>
 
-          <p className="text-gray-600 text-center mb-6">
+          <p className="mb-6 text-center text-gray-600">
             Are you sure you want to mark {itemCount}{" "}
             {itemCount === 1 ? "item" : "items"} as Admin Done?
           </p>
@@ -1342,13 +1344,13 @@ function DelegationDataPage() {
           <div className="flex justify-center space-x-4">
             <button
               onClick={onCancel}
-              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+              className="px-4 py-2 text-gray-700 transition-colors bg-gray-200 rounded-md hover:bg-gray-300"
             >
               Cancel
             </button>
             <button
               onClick={onConfirm}
-              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+              className="px-4 py-2 text-white transition-colors bg-green-600 rounded-md hover:bg-green-700"
             >
               Confirm
             </button>
@@ -1424,8 +1426,7 @@ function DelegationDataPage() {
       ? filteredAccountData
       : filteredAccountData.filter((item) => item["col2"] === department);
 
-
-      console.log("filteredHistoryData",filteredHistoryData);
+  console.log("filteredHistoryData", filteredHistoryData);
 
   return (
     <AdminLayout>
@@ -1440,7 +1441,7 @@ function DelegationDataPage() {
           <div className="flex space-x-4">
             <div className="relative">
               <Search
-                className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                className="absolute text-gray-400 transform -translate-y-1/2 left-3 top-1/2"
                 size={18}
               />
               <input
@@ -1450,22 +1451,22 @@ function DelegationDataPage() {
                 }
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 pr-4 py-2 border border-purple-200 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="py-2 pl-10 pr-4 border border-purple-200 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
             </div>
 
             <button
               onClick={toggleHistory}
-              className="rounded-md bg-gradient-to-r from-blue-500 to-indigo-600 py-2 px-4 text-white hover:from-blue-600 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              className="px-4 py-2 text-white rounded-md bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             >
               {showHistory ? (
                 <div className="flex items-center">
-                  <ArrowLeft className="h-4 w-4 mr-1" />
+                  <ArrowLeft className="w-4 h-4 mr-1" />
                   <span>Back to Tasks</span>
                 </div>
               ) : (
                 <div className="flex items-center">
-                  <History className="h-4 w-4 mr-1" />
+                  <History className="w-4 h-4 mr-1" />
                   <span>View History</span>
                 </div>
               )}
@@ -1478,11 +1479,23 @@ function DelegationDataPage() {
                   // userRole !== "main admin" &&
                   handleSubmit
                 }
-                disabled={selectedItemsCount === 0 || isSubmitting}
-                className="rounded-md bg-gradient-to-r from-purple-600 to-pink-600 py-2 px-4 text-white hover:from-purple-700 hover:to-pink-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={
+                  selectedItemsCount === 0 ||
+                  !allSelectedHaveStatus ||
+                  isSubmitting
+                }
+                className="px-4 py-2 text-white rounded-md bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSubmitting
                   ? "Processing..."
+                  : selectedItemsCount === 0
+                  ? "Submit Selected (0)"
+                  : !allSelectedHaveStatus
+                  ? `Select Status for ${
+                      selectedItemsCount -
+                      Array.from(selectedItems).filter((id) => statusData[id])
+                        .length
+                    } Item(s)`
                   : `Submit Selected (${selectedItemsCount})`}
               </button>
             )}
@@ -1490,11 +1503,11 @@ function DelegationDataPage() {
             {showHistory &&
               (userRole === "admin" || userRole === "main admin") &&
               selectedHistoryItems.length > 0 && (
-                <div className="fixed top-40 right-10 z-50">
+                <div className="fixed z-50 top-40 right-10">
                   <button
                     onClick={handleMarkMultipleDone}
                     disabled={markingAsDone}
-                    className="rounded-md bg-green-600 text-white px-4 py-2 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-4 py-2 text-white bg-green-600 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {markingAsDone
                       ? "Processing..."
@@ -1505,7 +1518,7 @@ function DelegationDataPage() {
           </div>
         </div>
 
-        <div className="w-full flex flex-wrap items-center gap-4 mt-4 mb-4">
+        <div className="flex flex-wrap items-center w-full gap-4 mt-4 mb-4">
           {/* Name Filter */}
           <div className="flex items-center">
             <select
@@ -1539,7 +1552,7 @@ function DelegationDataPage() {
                 onChange={(e) =>
                   setDateRange((prev) => ({ ...prev, start: e.target.value }))
                 }
-                className="border border-purple-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 shadow-sm"
+                className="px-3 py-2 text-sm border border-purple-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
               />
             </div>
             <div className="flex items-center space-x-2">
@@ -1556,7 +1569,7 @@ function DelegationDataPage() {
                 onChange={(e) =>
                   setDateRange((prev) => ({ ...prev, end: e.target.value }))
                 }
-                className="border border-purple-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 shadow-sm"
+                className="px-3 py-2 text-sm border border-purple-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
               />
             </div>
           </div>
@@ -1615,28 +1628,28 @@ function DelegationDataPage() {
         </div>
 
         {successMessage && (
-          <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md flex items-center justify-between">
+          <div className="flex items-center justify-between px-4 py-3 text-green-700 border border-green-200 rounded-md bg-green-50">
             <div className="flex items-center">
-              <CheckCircle2 className="h-5 w-5 mr-2 text-green-500" />
+              <CheckCircle2 className="w-5 h-5 mr-2 text-green-500" />
               {successMessage}
             </div>
             <button
               onClick={() => setSuccessMessage("")}
               className="text-green-500 hover:text-green-700"
             >
-              <X className="h-5 w-5" />
+              <X className="w-5 h-5" />
             </button>
           </div>
         )}
 
-        <div className="rounded-lg border border-purple-200 shadow-md bg-white overflow-hidden">
-          <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-b border-purple-100 p-4">
-            <h2 className="text-purple-700 font-medium">
+        <div className="overflow-hidden bg-white border border-purple-200 rounded-lg shadow-md">
+          <div className="p-4 border-b border-purple-100 bg-gradient-to-r from-purple-50 to-pink-50">
+            <h2 className="font-medium text-purple-700">
               {showHistory
                 ? `Completed ${CONFIG.SOURCE_SHEET_NAME} Tasks`
                 : `Pending ${CONFIG.SOURCE_SHEET_NAME} Tasks`}
             </h2>
-            <p className="text-purple-600 text-sm">
+            <p className="text-sm text-purple-600">
               {showHistory
                 ? `${CONFIG.PAGE_CONFIG.historyDescription} for ${
                     userRole === "admin" || userRole === "main admin"
@@ -1648,15 +1661,15 @@ function DelegationDataPage() {
           </div>
 
           {loading ? (
-            <div className="text-center py-10">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-purple-500 mb-4"></div>
+            <div className="py-10 text-center">
+              <div className="inline-block w-8 h-8 mb-4 border-t-2 border-b-2 border-purple-500 rounded-full animate-spin"></div>
               <p className="text-purple-600">Loading task data...</p>
             </div>
           ) : error ? (
-            <div className="bg-red-50 p-4 rounded-md text-red-800 text-center">
+            <div className="p-4 text-center text-red-800 rounded-md bg-red-50">
               {error}{" "}
               <button
-                className="underline ml-2"
+                className="ml-2 underline"
                 onClick={() => window.location.reload()}
               >
                 Try again
@@ -1668,7 +1681,7 @@ function DelegationDataPage() {
               <div className="p-4 border-b border-purple-100 bg-gray-50">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div className="flex flex-col">
-                    <div className="mb-2 flex items-center">
+                    <div className="flex items-center mb-2">
                       <span className="text-sm font-medium text-purple-700">
                         Filter by Date Range:
                       </span>
@@ -1677,7 +1690,7 @@ function DelegationDataPage() {
                       <div className="flex items-center">
                         <label
                           htmlFor="start-date"
-                          className="text-sm text-gray-700 mr-1"
+                          className="mr-1 text-sm text-gray-700"
                         >
                           From
                         </label>
@@ -1686,13 +1699,13 @@ function DelegationDataPage() {
                           type="date"
                           value={startDate}
                           onChange={(e) => setStartDate(e.target.value)}
-                          className="text-sm border border-gray-200 rounded-md p-1"
+                          className="p-1 text-sm border border-gray-200 rounded-md"
                         />
                       </div>
                       <div className="flex items-center">
                         <label
                           htmlFor="end-date"
-                          className="text-sm text-gray-700 mr-1"
+                          className="mr-1 text-sm text-gray-700"
                         >
                           To
                         </label>
@@ -1701,7 +1714,7 @@ function DelegationDataPage() {
                           type="date"
                           value={endDate}
                           onChange={(e) => setEndDate(e.target.value)}
-                          className="text-sm border border-gray-200 rounded-md p-1"
+                          className="p-1 text-sm border border-gray-200 rounded-md"
                         />
                       </div>
                     </div>
@@ -1710,7 +1723,7 @@ function DelegationDataPage() {
                   {(startDate || endDate || searchTerm) && (
                     <button
                       onClick={resetFilters}
-                      className="px-3 py-1 bg-red-100 text-red-700 rounded-md hover:bg-red-200 text-sm"
+                      className="px-3 py-1 text-sm text-red-700 bg-red-100 rounded-md hover:bg-red-200"
                     >
                       Clear All Filters
                     </button>
@@ -1724,11 +1737,11 @@ function DelegationDataPage() {
                   <thead className="bg-gray-50">
                     <tr>
                       {(userRole === "admin" || userRole === "main admin") && (
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
+                        <th className="w-12 px-3 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                           <div className="flex flex-col items-center">
                             <input
                               type="checkbox"
-                              className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                              className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
                               checked={
                                 fillteredHistoryDataByMainAdmin.filter(
                                   (item) => !isItemAdminDone(item)
@@ -1750,48 +1763,48 @@ function DelegationDataPage() {
                                 }
                               }}
                             />
-                            <span className="text-xs text-gray-400 mt-1">
+                            <span className="mt-1 text-xs text-gray-400">
                               Admin
                             </span>
                           </div>
                         </th>
                       )}
                       {/* NEW: Submission Status Column Header */}
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                         Verify Pending
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                         Submission Status
                       </th>
                       {/* Admin Select Column Header */}
 
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                         Timestamp
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                         Task ID
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                         Task
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                         Status
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                         Next Target Date
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                         Remarks
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                         Uploaded Image
                       </th>
                       {(userRole === "admin" || userRole === "main admin") && (
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                           User
                         </th>
                       )}
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                         Given By
                       </th>
                       {(userRole === "admin" || userRole === "main admin") && (
@@ -1821,7 +1834,7 @@ function DelegationDataPage() {
                           >
                             {(userRole === "admin" ||
                               userRole === "main admin") && (
-                              <td className="px-3 py-4 w-12">
+                              <td className="w-12 px-3 py-4">
                                 <div className="flex flex-col items-center">
                                   <input
                                     type="checkbox"
@@ -1896,7 +1909,7 @@ function DelegationDataPage() {
                             </td>
                             <td className="px-6 py-4 min-w-[250px]">
                               <div
-                                className="text-sm text-gray-900 max-w-md whitespace-normal break-words"
+                                className="max-w-md text-sm text-gray-900 break-words whitespace-normal"
                                 title={history["col8"]}
                               >
                                 {history["col8"] || "—"}
@@ -1922,7 +1935,7 @@ function DelegationDataPage() {
                             </td>
                             <td className="px-6 py-4 bg-purple-50 min-w-[200px]">
                               <div
-                                className="text-sm text-gray-900 max-w-md whitespace-normal break-words"
+                                className="max-w-md text-sm text-gray-900 break-words whitespace-normal"
                                 title={history["col4"]}
                               >
                                 {history["col4"] || "—"}
@@ -1934,7 +1947,7 @@ function DelegationDataPage() {
                                   href={history["col5"]}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-blue-600 hover:text-blue-800 underline flex items-center"
+                                  className="flex items-center text-blue-600 underline hover:text-blue-800"
                                 >
                                   <img
                                     src={
@@ -1942,7 +1955,7 @@ function DelegationDataPage() {
                                       "/api/placeholder/32/32"
                                     }
                                     alt="Attachment"
-                                    className="h-8 w-8 object-cover rounded-md mr-2"
+                                    className="object-cover w-8 h-8 mr-2 rounded-md"
                                   />
                                   View
                                 </a>
@@ -1971,21 +1984,21 @@ function DelegationDataPage() {
                                 {isAdminDone ? (
                                   <div className="text-sm text-gray-900 break-words">
                                     <div className="flex items-center">
-                                      <div className="h-4 w-4 rounded border-gray-300 text-green-600 bg-green-100 mr-2 flex items-center justify-center">
+                                      <div className="flex items-center justify-center w-4 h-4 mr-2 text-green-600 bg-green-100 border-gray-300 rounded">
                                         <span className="text-xs text-green-600">
                                           ✓
                                         </span>
                                       </div>
                                       <div className="flex flex-col">
-                                        <div className="font-medium text-green-700 text-sm">
+                                        <div className="text-sm font-medium text-green-700">
                                           Done
                                         </div>
                                       </div>
                                     </div>
                                   </div>
                                 ) : (
-                                  <div className="flex items-center text-gray-400 text-sm">
-                                    <div className="h-4 w-4 rounded border-gray-300 mr-2"></div>
+                                  <div className="flex items-center text-sm text-gray-400">
+                                    <div className="w-4 h-4 mr-2 border-gray-300 rounded"></div>
                                     <span>Pending</span>
                                   </div>
                                 )}
@@ -2020,10 +2033,10 @@ function DelegationDataPage() {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                       <input
                         type="checkbox"
-                        className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                        className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
                         checked={
                           filteredAccountDataByMainAdming.length > 0 &&
                           selectedItems.size ===
@@ -2032,25 +2045,25 @@ function DelegationDataPage() {
                         onChange={handleSelectAllItems}
                       />
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                       Status
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                       Task Start Date
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                       Task ID
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                       Department
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                       Given By
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                       Name
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                       Task Description
                     </th>
                     <th
@@ -2116,7 +2129,7 @@ function DelegationDataPage() {
                           <td className="px-6 py-4 whitespace-nowrap">
                             <input
                               type="checkbox"
-                              className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                              className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
                               checked={isSelected}
                               onChange={(e) =>
                                 handleCheckboxClick(e, account._id)
@@ -2161,7 +2174,7 @@ function DelegationDataPage() {
                           </td>
                           <td className="px-6 py-4 min-w-[250px]">
                             <div
-                              className="text-sm text-gray-900 max-w-md whitespace-normal break-words"
+                              className="max-w-md text-sm text-gray-900 break-words whitespace-normal"
                               title={account["col5"]}
                             >
                               {account["col5"] || "—"}
@@ -2196,7 +2209,7 @@ function DelegationDataPage() {
                               onChange={(e) =>
                                 handleStatusChange(account._id, e.target.value)
                               }
-                              className="border border-gray-300 rounded-md px-2 py-1 w-full disabled:bg-gray-100 disabled:cursor-not-allowed"
+                              className="w-full px-2 py-1 border border-gray-300 rounded-md disabled:bg-gray-100 disabled:cursor-not-allowed"
                             >
                               <option value="">Select</option>
                               <option value="Done">Done</option>
@@ -2245,7 +2258,7 @@ function DelegationDataPage() {
                                   handleNextTargetDateChange(account._id, "");
                                 }
                               }}
-                              className="border border-gray-300 rounded-md px-2 py-1 w-full disabled:bg-gray-100 disabled:cursor-not-allowed"
+                              className="w-full px-2 py-1 border border-gray-300 rounded-md disabled:bg-gray-100 disabled:cursor-not-allowed"
                             />
                           </td>
                           <td
@@ -2264,7 +2277,7 @@ function DelegationDataPage() {
                                   [account._id]: e.target.value,
                                 }))
                               }
-                              className="border rounded-md px-2 py-1 w-full border-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                              className="w-full px-2 py-1 border border-gray-300 rounded-md disabled:bg-gray-100 disabled:cursor-not-allowed"
                             />
                           </td>
                           <td
@@ -2281,7 +2294,7 @@ function DelegationDataPage() {
                                       : URL.createObjectURL(account.image)
                                   }
                                   alt="Receipt"
-                                  className="h-10 w-10 object-cover rounded-md mr-2"
+                                  className="object-cover w-10 h-10 mr-2 rounded-md"
                                 />
                                 <div className="flex flex-col">
                                   {/* <span className="text-xs text-gray-500"> */}
@@ -2309,13 +2322,13 @@ function DelegationDataPage() {
                                     : "text-purple-600"
                                 } hover:text-purple-800`}
                               >
-                                <Upload className="h-4 w-4 mr-1" />
+                                <Upload className="w-4 h-4 mr-1" />
                                 <span className="text-xs">
                                   {account["col9"]?.toUpperCase() === "YES"
                                     ? "Required Upload"
                                     : "Upload Image"}
                                   {account["col9"]?.toUpperCase() === "YES" && (
-                                    <span className="text-red-500 ml-1">*</span>
+                                    <span className="ml-1 text-red-500">*</span>
                                   )}
                                 </span>
                                 <input

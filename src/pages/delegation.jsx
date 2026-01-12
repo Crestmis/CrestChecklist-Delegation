@@ -528,6 +528,9 @@ function DelegationDataPage() {
     adminDepartment,
   ]);
 
+
+  console.log(userRole,"uesrrole")
+
   const uniqueNames = useMemo(() => {
     const names = new Set();
     accountData.forEach((item) => {
@@ -700,7 +703,7 @@ function DelegationDataPage() {
             processedHistoryData = historyData.table.rows
               .map((row, rowIndex) => {
                 if (rowIndex === 0) return null;
-
+                      console.log(row,"rowdfkdfkdjfkjfdjkjf")
                 const rowData = {
                   _id: Math.random().toString(36).substring(2, 15),
                   _rowIndex: rowIndex + 1,
@@ -976,6 +979,8 @@ function DelegationDataPage() {
   }, []);
 
   const handleSubmit = async () => {
+
+    console.log("clicked")
     const selectedItemsArray = Array.from(selectedItems);
 
     if (selectedItemsArray.length === 0) {
@@ -1138,23 +1143,53 @@ function DelegationDataPage() {
                 .toString()
                 .padStart(2, "0")}`;
 
+              // ✅ IMPORTANT: Full 17-column array to ensure correct column mapping for ALL users
+              // This prevents Google Apps Script from shifting data to wrong columns
               const historyRowData = [
-                timestampWithTime, // A: Submission timestamp WITH TIME ✅ FIXED
-                originalTaskId, // B: Original task ID ✅ FIXED
-                "Extended to new task", // C: Status
-                formattedNextTargetDate, // D: Next target date
-                remarksData[id] || "", // E: Remarks
-                imageUrl, // F: Image URL
-                "", // G: Empty column
-                username, // H: User who extended
-                item.col5 || "", // I: Task description
-                item.col3 || "", // J: Given By
+                timestampWithTime, // A (0): Timestamp
+                originalTaskId, // B (1): Task ID
+                "Extended to new task", // C (2): Status ← Goes to Column C for ALL ROLES
+                formattedNextTargetDate, // D (3): Next extend date
+                remarksData[id] || "", // E (4): Reason/Remarks
+                imageUrl, // F (5): Upload Image
+                "", // G (6): Condition Date (empty)
+                username, // H (7): Name
+                item.col5 || "", // I (8): Task Description
+                item.col3 || "", // J (9): Given By
+                "", // K (10): Admin Done - LEAVE EMPTY for user/admin submission
+                "", // L (11): Reserved
+                "", // M (12): Reserved
+                "", // N (13): Reserved
+                "", // O (14): Reserved
+                "", // P (15): Admin Done 2 - LEAVE EMPTY
+                item.col2 || "", // Q (16): Department
               ];
+
+              // 🔍 DEBUG: Log extend date submission data
+              console.log("=== EXTEND DATE SUBMISSION DEBUG ===");
+              console.log("User Role:", userRole);
+              console.log("Username:", username);
+              console.log(
+                "Status being submitted (Column C - index 2):",
+                historyRowData[2]
+              );
+              console.log("Full Row Data Array (17 columns):", historyRowData);
+              console.log(
+                "Column K (Admin Done) value:",
+                historyRowData[10],
+                "← Should be empty!"
+              );
+              console.log("=====================================");
 
               const historyFormData = new FormData();
               historyFormData.append("sheetName", CONFIG.TARGET_SHEET_NAME); // DELEGATION DONE
               historyFormData.append("action", "insert");
               historyFormData.append("rowData", JSON.stringify(historyRowData));
+
+              // ✅ NEW: Force regular user submission mode for admin/main admin
+              historyFormData.append("forceUserMode", "true");
+              historyFormData.append("submitterType", "user");
+              historyFormData.append("skipAdminLogic", "true");
 
               const historyResponse = await fetch(CONFIG.APPS_SCRIPT_URL, {
                 method: "POST",
@@ -1195,18 +1230,45 @@ function DelegationDataPage() {
                 .toString()
                 .padStart(2, "0")}`;
 
+              // ✅ IMPORTANT: Full 17-column array to ensure correct column mapping for ALL users
+              // This prevents Google Apps Script from shifting data to wrong columns
               const newRowData = [
-                timestampWithTime, // A: Timestamp WITH TIME ✅ FIXED
-                item.col1 || "", // B: Task ID
-                statusData[id] || "", // C: Status
-                formattedNextTargetDate, // D: Next target date
-                remarksData[id] || "", // E: Remarks
-                imageUrl, // F: Image URL
-                "", // G: Empty column
-                username, // H: User
-                item.col5 || "", // I: Task description
-                item.col3 || "", // J: Given By
+                timestampWithTime, // A (0): Timestamp
+                item.col1 || "", // B (1): Task ID
+                statusData[id] || "", // C (2): Status ← "Done" or "Extend date" for ALL ROLES
+                formattedNextTargetDate, // D (3): Next extend date
+                remarksData[id] || "", // E (4): Reason/Remarks
+                imageUrl, // F (5): Upload Image
+                "", // G (6): Condition Date (empty)
+                username, // H (7): Name
+                item.col5 || "", // I (8): Task Description
+                item.col3 || "", // J (9): Given By
+                "", // K (10): Admin Done - LEAVE EMPTY for user/admin submission
+                "", // L (11): Reserved
+                "", // M (12): Reserved
+                "", // N (13): Reserved
+                "", // O (14): Reserved
+                "", // P (15): Admin Done 2 - LEAVE EMPTY
+                item.col2 || "", // Q (16): Department
               ];
+
+              // 🔍 DEBUG: Log submission data to verify correct column mapping
+              console.log("=== DELEGATION SUBMISSION DEBUG ===");
+              console.log("User Role:", userRole);
+              console.log("Username:", username);
+              console.log(
+                "Status being submitted (Column C - index 2):",
+                statusData[id]
+              );
+              console.log("Full Row Data Array (17 columns):", newRowData);
+              console.log("Column C (Status) value:", newRowData[2]);
+              console.log(
+                "Column K (Admin Done) value:",
+                newRowData[10],
+                "← Should be empty!"
+              );
+              console.log("===================================");
+
               const insertFormData = new FormData();
               insertFormData.append("sheetName", CONFIG.TARGET_SHEET_NAME); // DELEGATION DONE
               insertFormData.append("action", "insert");
@@ -1214,6 +1276,12 @@ function DelegationDataPage() {
               insertFormData.append("dateFormat", "DD/MM/YYYY");
               insertFormData.append("timestampColumn", "0");
               insertFormData.append("nextTargetDateColumn", "3");
+
+              // ✅ NEW: Force regular user submission mode for admin/main admin
+              // This tells GAS to treat this submission same as regular user
+              insertFormData.append("forceUserMode", "true");
+              insertFormData.append("submitterType", "user");
+              insertFormData.append("skipAdminLogic", "true");
 
               // ✅ FIXED: DateTime metadata for proper timestamp handling
               const dateMetadata = {

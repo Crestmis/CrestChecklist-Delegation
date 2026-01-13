@@ -528,8 +528,7 @@ function DelegationDataPage() {
     adminDepartment,
   ]);
 
-
-  console.log(userRole,"uesrrole")
+  console.log(userRole, "uesrrole");
 
   const uniqueNames = useMemo(() => {
     const names = new Set();
@@ -703,7 +702,7 @@ function DelegationDataPage() {
             processedHistoryData = historyData.table.rows
               .map((row, rowIndex) => {
                 if (rowIndex === 0) return null;
-                      console.log(row,"rowdfkdfkdjfkjfdjkjf")
+                console.log(row, "rowdfkdfkdjfkjfdjkjf");
                 const rowData = {
                   _id: Math.random().toString(36).substring(2, 15),
                   _rowIndex: rowIndex + 1,
@@ -979,8 +978,7 @@ function DelegationDataPage() {
   }, []);
 
   const handleSubmit = async () => {
-
-    console.log("clicked")
+    console.log("clicked");
     const selectedItemsArray = Array.from(selectedItems);
 
     if (selectedItemsArray.length === 0) {
@@ -2272,7 +2270,9 @@ function DelegationDataPage() {
                             }`}
                           >
                             <select
-                              disabled={!isSelected}
+                              disabled={
+                                !isSelected || userRole !== "main admin"
+                              }
                               value={statusData[account._id] || ""}
                               onChange={(e) =>
                                 handleStatusChange(account._id, e.target.value)

@@ -320,7 +320,7 @@ export default function AssignTask() {
       setGivenByOptions([...new Set(givenBy)].sort());
       setDoerOptions([...new Set(doers)].sort());
 
-      
+
     } catch (error) {
       console.error("Error fetching master sheet options:", error);
       // Set default options if fetch fails
@@ -865,109 +865,73 @@ export default function AssignTask() {
   };
 
 
-  
+
 
   // Helper function to format date for display in preview
-  
+
   const handleSubmit = async (e) => {
-  e.preventDefault();
-  setIsSubmitting(true);
+    e.preventDefault();
+    setIsSubmitting(true);
 
-  try {
-    if (generatedTasks.length === 0) {
-      alert(
-        "Please generate tasks first by clicking Preview Generated Tasks"
-      );
-      setIsSubmitting(false);
-      return;
-    }
-
-    if (!formData.department || formData.department.trim() === "") {
-      alert("Please select a department before submitting tasks");
-      setIsSubmitting(false);
-      return;
-    }
-
-    if (!formData.taskType) {
-      alert("Please select a task type first");
-      return;
-    }
-
-    let submitSheetName =
-      formData.taskType === "delegation" ? "DELEGATION" : "Checklist";
-
-    const isToday = () => {
-      if (!date) return false;
-      const today = new Date();
-      const selectedDate = new Date(date);
-
-      today.setHours(0, 0, 0, 0);
-      selectedDate.setHours(0, 0, 0, 0);
-
-      return selectedDate.getTime() === today.getTime();
-    };
-
-    let tasksToSubmit = generatedTasks;
-
-    if (isToday()) {
-      const todayDateStr = formatDateToDDMMYYYY(date);
-      tasksToSubmit = generatedTasks.filter((task) => {
-        const taskDateStr = task.dueDate.split(" ")[0];
-        return taskDateStr === todayDateStr;
-      });
-
-      if (tasksToSubmit.length === 0) {
-        tasksToSubmit = [generatedTasks[0]];
+    try {
+      if (generatedTasks.length === 0) {
+        alert(
+          "Please generate tasks first by clicking Preview Generated Tasks"
+        );
+        setIsSubmitting(false);
+        return;
       }
-    }
 
-    const lastTaskIdMain = await getLastTaskId(submitSheetName);
-    let nextTaskIdMain = lastTaskIdMain + 1;
-
-    // ⭐ MAIN SHEET taskId logic — Checklist = blank, Delegation = auto
-    const tasksDataMain = tasksToSubmit.map((task, index) => ({
-      timestamp: getCurrentTimestamp(),
-
-      taskId:
-        formData.taskType === "checklist"
-          ? "" // ONLY CHECKLIST MAIN SHEET → blank
-          : (nextTaskIdMain + index).toString(),
-
-      firm: task.department,
-      givenBy: task.givenBy,
-      name: task.doer,
-      description: task.description,
-      startDate: task.dueDate,
-      freq: task.frequency,
-      enableReminders: task.enableReminders ? "Yes" : "No",
-      requireAttachment: task.requireAttachment ? "Yes" : "No",
-    }));
-
-    // MAIN SHEET submit
-    const formPayloadMain = new FormData();
-    formPayloadMain.append("sheetName", submitSheetName);
-    formPayloadMain.append("action", "insert");
-    formPayloadMain.append("batchInsert", "true");
-    formPayloadMain.append("rowData", JSON.stringify(tasksDataMain));
-
-    await fetch(
-      "https://script.google.com/macros/s/AKfycbzXDZKaK19qMnm2SdqDjEMzusD5vFISI9IRH4ce4xFlTggpElU9ikpJU2ULfkGqvf9VMA/exec",
-      {
-        method: "POST",
-        body: formPayloadMain,
-        mode: "no-cors",
+      if (!formData.department || formData.department.trim() === "") {
+        alert("Please select a department before submitting tasks");
+        setIsSubmitting(false);
+        return;
       }
-    );
 
-    // ⭐ UNIQUE SHEET → ALWAYS GENERATE taskId (never blank)
-    if (formData.frequency !== "one-time") {
-      const lastTaskIdUnique = await getLastTaskId("UNIQUE");
-      let nextTaskIdUnique = lastTaskIdUnique + 1;
+      if (!formData.taskType) {
+        alert("Please select a task type first");
+        return;
+      }
 
-      const tasksDataUnique = tasksToSubmit.map((task, index) => ({
+      let submitSheetName =
+        formData.taskType === "delegation" ? "DELEGATION" : "Checklist";
+
+      const isToday = () => {
+        if (!date) return false;
+        const today = new Date();
+        const selectedDate = new Date(date);
+
+        today.setHours(0, 0, 0, 0);
+        selectedDate.setHours(0, 0, 0, 0);
+
+        return selectedDate.getTime() === today.getTime();
+      };
+
+      let tasksToSubmit = generatedTasks;
+
+      if (isToday()) {
+        const todayDateStr = formatDateToDDMMYYYY(date);
+        tasksToSubmit = generatedTasks.filter((task) => {
+          const taskDateStr = task.dueDate.split(" ")[0];
+          return taskDateStr === todayDateStr;
+        });
+
+        if (tasksToSubmit.length === 0) {
+          tasksToSubmit = [generatedTasks[0]];
+        }
+      }
+
+      const lastTaskIdMain = await getLastTaskId(submitSheetName);
+      let nextTaskIdMain = lastTaskIdMain + 1;
+
+      // ⭐ MAIN SHEET taskId logic — Checklist = blank, Delegation = auto
+      const tasksDataMain = tasksToSubmit.map((task, index) => ({
         timestamp: getCurrentTimestamp(),
 
-        taskId: (nextTaskIdUnique + index).toString(), // ALWAYS auto-id
+        taskId:
+          formData.taskType === "checklist"
+            ? "" // ONLY CHECKLIST MAIN SHEET → blank
+            : (nextTaskIdMain + index).toString(),
 
         firm: task.department,
         givenBy: task.givenBy,
@@ -979,61 +943,98 @@ export default function AssignTask() {
         requireAttachment: task.requireAttachment ? "Yes" : "No",
       }));
 
-      const formPayloadUnique = new FormData();
-      formPayloadUnique.append("sheetName", "UNIQUE");
-      formPayloadUnique.append("action", "insert");
-      formPayloadUnique.append("batchInsert", "true");
-      formPayloadUnique.append("rowData", JSON.stringify(tasksDataUnique));
+      // MAIN SHEET submit
+      const formPayloadMain = new FormData();
+      formPayloadMain.append("sheetName", submitSheetName);
+      formPayloadMain.append("action", "insert");
+      formPayloadMain.append("batchInsert", "true");
+      formPayloadMain.append("rowData", JSON.stringify(tasksDataMain));
 
       await fetch(
         "https://script.google.com/macros/s/AKfycbzXDZKaK19qMnm2SdqDjEMzusD5vFISI9IRH4ce4xFlTggpElU9ikpJU2ULfkGqvf9VMA/exec",
         {
           method: "POST",
-          body: formPayloadUnique,
+          body: formPayloadMain,
           mode: "no-cors",
         }
       );
+
+      // ⭐ UNIQUE SHEET → ALWAYS GENERATE taskId (never blank)
+      if (formData.frequency !== "one-time") {
+        const lastTaskIdUnique = await getLastTaskId("UNIQUE");
+        let nextTaskIdUnique = lastTaskIdUnique + 1;
+
+        const tasksDataUnique = tasksToSubmit.map((task, index) => ({
+          timestamp: getCurrentTimestamp(),
+
+          taskId: (nextTaskIdUnique + index).toString(), // ALWAYS auto-id
+
+          firm: task.department,
+          givenBy: task.givenBy,
+          name: task.doer,
+          description: task.description,
+          startDate: task.dueDate,
+          freq: task.frequency,
+          enableReminders: task.enableReminders ? "Yes" : "No",
+          requireAttachment: task.requireAttachment ? "Yes" : "No",
+          lastTimeUpdateDate: task.dueDate,  // Same as Task Deadline Date (startDate)
+        }));
+
+        const formPayloadUnique = new FormData();
+        formPayloadUnique.append("sheetName", "UNIQUE");
+        formPayloadUnique.append("action", "insert");
+        formPayloadUnique.append("batchInsert", "true");
+        formPayloadUnique.append("rowData", JSON.stringify(tasksDataUnique));
+
+        await fetch(
+          "https://script.google.com/macros/s/AKfycbzXDZKaK19qMnm2SdqDjEMzusD5vFISI9IRH4ce4xFlTggpElU9ikpJU2ULfkGqvf9VMA/exec",
+          {
+            method: "POST",
+            body: formPayloadUnique,
+            mode: "no-cors",
+          }
+        );
+      }
+
+      const taskCount = tasksToSubmit.length;
+      let successMessage = `Successfully submitted ${taskCount} task(s) to ${submitSheetName}`;
+
+      if (formData.frequency !== "one-time") {
+        successMessage += ` and UNIQUE sheets!`;
+      }
+      if (isToday()) {
+        successMessage =
+          `Today's date selected - submitted ${taskCount} task(s) to ${submitSheetName}` +
+          (formData.frequency !== "one-time" ? " and UNIQUE sheets!" : "!");
+      }
+
+      alert(successMessage);
+
+      const userRole = sessionStorage.getItem("role");
+      const username = sessionStorage.getItem("username");
+
+      setFormData({
+        department: "",
+        givenBy: "",
+        doer: (userRole !== "admin" && userRole !== "main admin") && username ? formData.doer : "",
+        description: "",
+        frequency: "daily",
+        enableReminders: true,
+        requireAttachment: false,
+      });
+      setSelectedDate(null);
+      setTime("09:00");
+      setGeneratedTasks([]);
+      setAccordionOpen(false);
+    } catch (error) {
+      console.error("Submission error:", error);
+      alert("Failed to assign tasks. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
+  };
 
-    const taskCount = tasksToSubmit.length;
-    let successMessage = `Successfully submitted ${taskCount} task(s) to ${submitSheetName}`;
 
-    if (formData.frequency !== "one-time") {
-      successMessage += ` and UNIQUE sheets!`;
-    }
-    if (isToday()) {
-      successMessage =
-        `Today's date selected - submitted ${taskCount} task(s) to ${submitSheetName}` +
-        (formData.frequency !== "one-time" ? " and UNIQUE sheets!" : "!");
-    }
-
-    alert(successMessage);
-
-    const userRole = sessionStorage.getItem("role");
-    const username = sessionStorage.getItem("username");
-
-    setFormData({
-      department: "",
-      givenBy: "",
-      doer: (userRole !== "admin" && userRole !== "main admin") && username ? formData.doer : "",
-      description: "",
-      frequency: "daily",
-      enableReminders: true,
-      requireAttachment: false,
-    });
-    setSelectedDate(null);
-    setTime("09:00");
-    setGeneratedTasks([]);
-    setAccordionOpen(false);
-  } catch (error) {
-    console.error("Submission error:", error);
-    alert("Failed to assign tasks. Please try again.");
-  } finally {
-    setIsSubmitting(false);
-  }
-};
-
-  
   const formatDateForDisplay = (dateTimeStr) => {
     // dateTimeStr is in format "DD/MM/YYYY HH:MM:SS"
     return dateTimeStr;

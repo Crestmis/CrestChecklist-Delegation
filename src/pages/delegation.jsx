@@ -17,7 +17,7 @@ const CONFIG = {
     "https://script.google.com/macros/s/AKfycbzXDZKaK19qMnm2SdqDjEMzusD5vFISI9IRH4ce4xFlTggpElU9ikpJU2ULfkGqvf9VMA/exec",
 
   // Google Drive folder ID for file uploads
-  DRIVE_FOLDER_ID: "1b5J5CXajdLhD5Lm_IPZg_Hs--kpHFzje",
+  DRIVE_FOLDER_ID: "1Vf7BuN6_obWMghwQYrs8tepCG-NTyDYm",
 
   // Sheet names
   SOURCE_SHEET_NAME: "DELEGATION",
@@ -54,6 +54,7 @@ function DelegationDataPage() {
   const [accountData, setAccountData] = useState([]);
   const [selectedItems, setSelectedItems] = useState(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitProgress, setSubmitProgress] = useState(0);
   const [successMessage, setSuccessMessage] = useState("");
   const [additionalData, setAdditionalData] = useState({});
   const [searchTerm, setSearchTerm] = useState("");
@@ -431,21 +432,21 @@ function DelegationDataPage() {
   const filteredAccountData = useMemo(() => {
     const filtered = debouncedSearchTerm
       ? accountData.filter(
-          (account) =>
-            Object.values(account).some(
-              (value) =>
-                value &&
-                value
-                  .toString()
-                  .toLowerCase()
-                  .includes(debouncedSearchTerm.toLowerCase())
-            ) ||
-            (account["col20"] &&
-              account["col20"]
+        (account) =>
+          Object.values(account).some(
+            (value) =>
+              value &&
+              value
                 .toString()
                 .toLowerCase()
-                .includes(debouncedSearchTerm.toLowerCase()))
-        )
+                .includes(debouncedSearchTerm.toLowerCase())
+          ) ||
+          (account["col20"] &&
+            account["col20"]
+              .toString()
+              .toLowerCase()
+              .includes(debouncedSearchTerm.toLowerCase()))
+      )
       : accountData;
 
     return filtered
@@ -540,7 +541,7 @@ function DelegationDataPage() {
       ) {
         if (
           item["col2"]?.toLowerCase().trim() ===
-            adminDepartment.toLowerCase().trim() &&
+          adminDepartment.toLowerCase().trim() &&
           item["col4"]
         ) {
           names.add(item["col4"]);
@@ -590,13 +591,13 @@ function DelegationDataPage() {
 
         const matchesSearch = debouncedSearchTerm
           ? Object.values(item).some(
-              (value) =>
-                value &&
-                value
-                  .toString()
-                  .toLowerCase()
-                  .includes(debouncedSearchTerm.toLowerCase())
-            )
+            (value) =>
+              value &&
+              value
+                .toString()
+                .toLowerCase()
+                .includes(debouncedSearchTerm.toLowerCase())
+          )
           : true;
 
         let matchesDateRange = true;
@@ -710,8 +711,8 @@ function DelegationDataPage() {
 
                 const rowValues = row.c
                   ? row.c.map((cell) =>
-                      cell && cell.v !== undefined ? cell.v : ""
-                    )
+                    cell && cell.v !== undefined ? cell.v : ""
+                  )
                   : [];
 
                 // Map all columns including column H (col7) for user filtering, column I (col8) for Task, and column P (col15) for Admin Done
@@ -769,8 +770,8 @@ function DelegationDataPage() {
         const stableId = taskId
           ? `task_${taskId}_${googleSheetsRowIndex}`
           : `row_${googleSheetsRowIndex}_${Math.random()
-              .toString(36)
-              .substring(2, 15)}`;
+            .toString(36)
+            .substring(2, 15)}`;
 
         const rowData = {
           _id: stableId,
@@ -797,7 +798,7 @@ function DelegationDataPage() {
           if (
             !taskAssignedTo ||
             taskAssignedTo.toLowerCase().trim() !==
-              username.toLowerCase().trim()
+            username.toLowerCase().trim()
           ) {
             return;
           }
@@ -846,6 +847,16 @@ function DelegationDataPage() {
       fetchSheetData();
     }
   }, [userRole, username, adminDepartment, fetchSheetData]);
+
+  // NEW: Auto-hide success message after 3 seconds
+  useEffect(() => {
+    if (successMessage) {
+      const timer = setTimeout(() => {
+        setSuccessMessage("");
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [successMessage]);
 
   const handleSelectItem = useCallback((id, isChecked) => {
     setSelectedItems((prev) => {
@@ -1022,10 +1033,14 @@ function DelegationDataPage() {
     }
 
     setIsSubmitting(true);
+    setSubmitProgress(0);
 
     try {
       const today = new Date();
       const dateForSubmission = formatDateForGoogleSheets(today);
+
+      const totalItems = selectedItemsArray.length;
+      let processedCount = 0;
 
       // Process submissions in batches
       const batchSize = 5;
@@ -1129,17 +1144,17 @@ function DelegationDataPage() {
                 .getDate()
                 .toString()
                 .padStart(2, "0")}/${(now.getMonth() + 1)
-                .toString()
-                .padStart(2, "0")}/${now.getFullYear()} ${now
-                .getHours()
-                .toString()
-                .padStart(2, "0")}:${now
-                .getMinutes()
-                .toString()
-                .padStart(2, "0")}:${now
-                .getSeconds()
-                .toString()
-                .padStart(2, "0")}`;
+                  .toString()
+                  .padStart(2, "0")}/${now.getFullYear()} ${now
+                    .getHours()
+                    .toString()
+                    .padStart(2, "0")}:${now
+                      .getMinutes()
+                      .toString()
+                      .padStart(2, "0")}:${now
+                        .getSeconds()
+                        .toString()
+                        .padStart(2, "0")}`;
 
               // ✅ IMPORTANT: Full 17-column array to ensure correct column mapping for ALL users
               // This prevents Google Apps Script from shifting data to wrong columns
@@ -1204,8 +1219,7 @@ function DelegationDataPage() {
               const historyResult = await historyResponse.json();
               if (!historyResult.success) {
                 throw new Error(
-                  `History submission failed: ${
-                    historyResult.error || "Unknown error"
+                  `History submission failed: ${historyResult.error || "Unknown error"
                   }`
                 );
               }
@@ -1216,17 +1230,17 @@ function DelegationDataPage() {
                 .getDate()
                 .toString()
                 .padStart(2, "0")}/${(now.getMonth() + 1)
-                .toString()
-                .padStart(2, "0")}/${now.getFullYear()} ${now
-                .getHours()
-                .toString()
-                .padStart(2, "0")}:${now
-                .getMinutes()
-                .toString()
-                .padStart(2, "0")}:${now
-                .getSeconds()
-                .toString()
-                .padStart(2, "0")}`;
+                  .toString()
+                  .padStart(2, "0")}/${now.getFullYear()} ${now
+                    .getHours()
+                    .toString()
+                    .padStart(2, "0")}:${now
+                      .getMinutes()
+                      .toString()
+                      .padStart(2, "0")}:${now
+                        .getSeconds()
+                        .toString()
+                        .padStart(2, "0")}`;
 
               // ✅ IMPORTANT: Full 17-column array to ensure correct column mapping for ALL users
               // This prevents Google Apps Script from shifting data to wrong columns
@@ -1315,14 +1329,16 @@ function DelegationDataPage() {
               const result = await response.json();
               if (!result.success) {
                 throw new Error(
-                  `Regular submission failed: ${
-                    result.error || "Unknown error"
+                  `Regular submission failed: ${result.error || "Unknown error"
                   }`
                 );
               }
             }
           })
         );
+
+        processedCount += batch.length;
+        setSubmitProgress(Math.round((processedCount / totalItems) * 100));
       }
 
       // Refresh data after successful submission
@@ -1550,19 +1566,26 @@ function DelegationDataPage() {
                   !allSelectedHaveStatus ||
                   isSubmitting
                 }
-                className="px-4 py-2 text-white rounded-md bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="relative overflow-hidden px-4 py-2 text-white rounded-md bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[180px]"
               >
-                {isSubmitting
-                  ? "Processing..."
-                  : selectedItemsCount === 0
-                  ? "Submit Selected (0)"
-                  : !allSelectedHaveStatus
-                  ? `Select Status for ${
-                      selectedItemsCount -
-                      Array.from(selectedItems).filter((id) => statusData[id])
-                        .length
-                    } Item(s)`
-                  : `Submit Selected (${selectedItemsCount})`}
+                {isSubmitting ? (
+                  <>
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Processing...</span>
+                  </>
+                ) : selectedItemsCount === 0 ? (
+                  "Submit Selected (0)"
+                ) : !allSelectedHaveStatus ? (
+                  `Select Status for ${selectedItemsCount -
+                  Array.from(selectedItems).filter((id) => statusData[id])
+                    .length
+                  } Item(s)`
+                ) : (
+                  `Submit Selected (${selectedItemsCount})`
+                )}
               </button>
             )}
             {/* NEW: Admin Submit Button for History View */}
@@ -1693,18 +1716,36 @@ function DelegationDataPage() {
           )}
         </div>
 
-        {successMessage && (
-          <div className="flex items-center justify-between px-4 py-3 text-green-700 border border-green-200 rounded-md bg-green-50">
-            <div className="flex items-center">
-              <CheckCircle2 className="w-5 h-5 mr-2 text-green-500" />
-              {successMessage}
+        {/* Full-screen Loading Overlay */}
+        {isSubmitting && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-white/70 backdrop-blur-[4px] transition-all duration-300">
+            <div className="flex flex-col items-center bg-white p-8 rounded-2xl shadow-2xl border border-purple-100 max-w-sm w-full mx-4 animate-in fade-in zoom-in duration-300">
+              <div className="relative w-20 h-20 mb-6 flex justify-center items-center">
+                <div className="absolute inset-0 border-4 border-purple-100 rounded-full"></div>
+                <div className="absolute inset-0 border-4 border-purple-600 rounded-full border-t-transparent animate-spin"></div>
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-2">Processing...</h3>
+              <p className="text-sm text-gray-500 text-center">Please wait while we securely submit your data to the server.</p>
             </div>
-            <button
-              onClick={() => setSuccessMessage("")}
-              className="text-green-500 hover:text-green-700"
-            >
-              <X className="w-5 h-5" />
-            </button>
+          </div>
+        )}
+
+        {/* Full-screen Success Message Overlay */}
+        {successMessage && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-[4px] transition-all duration-300">
+            <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full mx-4 transform transition-all flex flex-col items-center text-center animate-in fade-in zoom-in duration-300">
+              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-5 border-4 border-white shadow-sm">
+                <CheckCircle2 className="h-10 w-10 text-green-500" />
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-2">Success!</h3>
+              <p className="text-gray-600 mb-8">{successMessage}</p>
+              <button
+                onClick={() => setSuccessMessage("")}
+                className="w-full py-3 px-4 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 flex items-center justify-center transform hover:scale-[1.02] active:scale-[0.98]"
+              >
+                Continue
+              </button>
+            </div>
           </div>
         )}
 
@@ -1717,11 +1758,10 @@ function DelegationDataPage() {
             </h2>
             <p className="text-sm text-purple-600">
               {showHistory
-                ? `${CONFIG.PAGE_CONFIG.historyDescription} for ${
-                    userRole === "admin" || userRole === "main admin"
-                      ? "all"
-                      : "your"
-                  } tasks`
+                ? `${CONFIG.PAGE_CONFIG.historyDescription} for ${userRole === "admin" || userRole === "main admin"
+                  ? "all"
+                  : "your"
+                } tasks`
                 : CONFIG.PAGE_CONFIG.description}
             </p>
           </div>
@@ -1813,9 +1853,9 @@ function DelegationDataPage() {
                                   (item) => !isItemAdminDone(item)
                                 ).length > 0 &&
                                 selectedHistoryItems.length ===
-                                  fillteredHistoryDataByMainAdmin.filter(
-                                    (item) => !isItemAdminDone(item)
-                                  ).length
+                                fillteredHistoryDataByMainAdmin.filter(
+                                  (item) => !isItemAdminDone(item)
+                                ).length
                               }
                               onChange={(e) => {
                                 const unprocessedItems =
@@ -1894,62 +1934,58 @@ function DelegationDataPage() {
                         return (
                           <tr
                             key={history._id}
-                            className={`hover:bg-gray-50 ${
-                              isAdminDone ? "opacity-70 bg-gray-100" : ""
-                            }`}
+                            className={`hover:bg-gray-50 ${isAdminDone ? "opacity-70 bg-gray-100" : ""
+                              }`}
                           >
                             {(userRole === "admin" ||
                               userRole === "main admin") && (
-                              <td className="w-12 px-3 py-4">
-                                <div className="flex flex-col items-center">
-                                  <input
-                                    type="checkbox"
-                                    className={`h-4 w-4 rounded border-gray-300 ${
-                                      isAdminDone
+                                <td className="w-12 px-3 py-4">
+                                  <div className="flex flex-col items-center">
+                                    <input
+                                      type="checkbox"
+                                      className={`h-4 w-4 rounded border-gray-300 ${isAdminDone
                                         ? "text-green-600 bg-green-100"
                                         : "text-green-600 focus:ring-green-500"
-                                    }`}
-                                    checked={isAdminDone || isSelected}
-                                    disabled={isAdminDone}
-                                    onChange={() => {
-                                      if (!isAdminDone) {
-                                        setSelectedHistoryItems((prev) =>
-                                          isSelected
-                                            ? prev.filter(
+                                        }`}
+                                      checked={isAdminDone || isSelected}
+                                      disabled={isAdminDone}
+                                      onChange={() => {
+                                        if (!isAdminDone) {
+                                          setSelectedHistoryItems((prev) =>
+                                            isSelected
+                                              ? prev.filter(
                                                 (item) =>
                                                   item._id !== history._id
                                               )
-                                            : [...prev, history]
-                                        );
-                                      }
-                                    }}
-                                  />
-                                  <span
-                                    className={`text-xs mt-1 text-center break-words ${
-                                      isAdminDone
+                                              : [...prev, history]
+                                          );
+                                        }
+                                      }}
+                                    />
+                                    <span
+                                      className={`text-xs mt-1 text-center break-words ${isAdminDone
                                         ? "text-green-600"
                                         : "text-gray-400"
-                                    }`}
-                                  >
-                                    {isAdminDone ? "Done" : "Mark Done"}
-                                  </span>
-                                </div>
-                              </td>
-                            )}
+                                        }`}
+                                    >
+                                      {isAdminDone ? "Done" : "Mark Done"}
+                                    </span>
+                                  </div>
+                                </td>
+                              )}
                             {/* NEW: Submission Status Column */}
                             <td className="px-6 py-4 whitespace-nowrap">
                               <span
-                                className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                  history["col20"] === "Done"
-                                    ? "bg-green-100 text-green-800"
-                                    : history["col20"] === "Pending"
+                                className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${history["col20"] === "Done"
+                                  ? "bg-green-100 text-green-800"
+                                  : history["col20"] === "Pending"
                                     ? "bg-yellow-100 text-yellow-800"
                                     : history["col20"] === "Verify Pending"
-                                    ? "bg-orange-100 text-orange-800"
-                                    : history["col20"] === "Planned"
-                                    ? "bg-blue-100 text-blue-800"
-                                    : "bg-gray-100 text-gray-800"
-                                }`}
+                                      ? "bg-orange-100 text-orange-800"
+                                      : history["col20"] === "Planned"
+                                        ? "bg-blue-100 text-blue-800"
+                                        : "bg-gray-100 text-gray-800"
+                                  }`}
                               >
                                 {history["col20"] || "—"}
                               </span>
@@ -1983,13 +2019,12 @@ function DelegationDataPage() {
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <span
-                                className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                  history["col2"] === "Done"
-                                    ? "bg-green-100 text-green-800"
-                                    : history["col2"] === "Extend date"
+                                className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${history["col2"] === "Done"
+                                  ? "bg-green-100 text-green-800"
+                                  : history["col2"] === "Extend date"
                                     ? "bg-yellow-100 text-yellow-800"
                                     : "bg-gray-100 text-gray-800"
-                                }`}
+                                  }`}
                               >
                                 {history["col2"] || "—"}
                               </span>
@@ -2033,12 +2068,12 @@ function DelegationDataPage() {
                             </td>
                             {(userRole === "admin" ||
                               userRole === "main admin") && (
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm text-gray-900">
-                                  {history["col7"] || "—"}
-                                </div>
-                              </td>
-                            )}
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="text-sm text-gray-900">
+                                    {history["col7"] || "—"}
+                                  </div>
+                                </td>
+                              )}
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="text-sm text-gray-900">
                                 {history["col9"] || "—"}
@@ -2046,30 +2081,30 @@ function DelegationDataPage() {
                             </td>
                             {(userRole === "admin" ||
                               userRole === "main admin") && (
-                              <td className="px-6 py-4 bg-gray-50 min-w-[140px]">
-                                {isAdminDone ? (
-                                  <div className="text-sm text-gray-900 break-words">
-                                    <div className="flex items-center">
-                                      <div className="flex items-center justify-center w-4 h-4 mr-2 text-green-600 bg-green-100 border-gray-300 rounded">
-                                        <span className="text-xs text-green-600">
-                                          ✓
-                                        </span>
-                                      </div>
-                                      <div className="flex flex-col">
-                                        <div className="text-sm font-medium text-green-700">
-                                          Done
+                                <td className="px-6 py-4 bg-gray-50 min-w-[140px]">
+                                  {isAdminDone ? (
+                                    <div className="text-sm text-gray-900 break-words">
+                                      <div className="flex items-center">
+                                        <div className="flex items-center justify-center w-4 h-4 mr-2 text-green-600 bg-green-100 border-gray-300 rounded">
+                                          <span className="text-xs text-green-600">
+                                            ✓
+                                          </span>
+                                        </div>
+                                        <div className="flex flex-col">
+                                          <div className="text-sm font-medium text-green-700">
+                                            Done
+                                          </div>
                                         </div>
                                       </div>
                                     </div>
-                                  </div>
-                                ) : (
-                                  <div className="flex items-center text-sm text-gray-400">
-                                    <div className="w-4 h-4 mr-2 border-gray-300 rounded"></div>
-                                    <span>Pending</span>
-                                  </div>
-                                )}
-                              </td>
-                            )}
+                                  ) : (
+                                    <div className="flex items-center text-sm text-gray-400">
+                                      <div className="w-4 h-4 mr-2 border-gray-300 rounded"></div>
+                                      <span>Pending</span>
+                                    </div>
+                                  )}
+                                </td>
+                              )}
                           </tr>
                         );
                       })
@@ -2106,7 +2141,7 @@ function DelegationDataPage() {
                         checked={
                           filteredAccountDataByMainAdming.length > 0 &&
                           selectedItems.size ===
-                            filteredAccountDataByMainAdming.length
+                          filteredAccountDataByMainAdming.length
                         }
                         onChange={handleSelectAllItems}
                       />
@@ -2133,44 +2168,38 @@ function DelegationDataPage() {
                       Task Description
                     </th>
                     <th
-                      className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${
-                        !accountData["col17"] ? "bg-yellow-50" : ""
-                      }`}
+                      className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${!accountData["col17"] ? "bg-yellow-50" : ""
+                        }`}
                     >
                       Old Deadline Date
                     </th>
                     <th
-                      className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${
-                        !accountData["col17"] ? "bg-green-50" : ""
-                      }`}
+                      className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${!accountData["col17"] ? "bg-green-50" : ""
+                        }`}
                     >
                       New Deadline Date
                     </th>
                     <th
-                      className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${
-                        !accountData["col17"] ? "bg-blue-50" : ""
-                      }`}
+                      className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${!accountData["col17"] ? "bg-blue-50" : ""
+                        }`}
                     >
                       Status
                     </th>
                     <th
-                      className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${
-                        !accountData["col17"] ? "bg-indigo-50" : ""
-                      }`}
+                      className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${!accountData["col17"] ? "bg-indigo-50" : ""
+                        }`}
                     >
                       Next Target Date
                     </th>
                     <th
-                      className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${
-                        !accountData["col17"] ? "bg-purple-50" : ""
-                      }`}
+                      className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${!accountData["col17"] ? "bg-purple-50" : ""
+                        }`}
                     >
                       Remarks
                     </th>
                     <th
-                      className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${
-                        !accountData["col17"] ? "bg-orange-50" : ""
-                      }`}
+                      className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${!accountData["col17"] ? "bg-orange-50" : ""
+                        }`}
                     >
                       Upload Image
                     </th>
@@ -2184,13 +2213,11 @@ function DelegationDataPage() {
                       return (
                         <tr
                           key={account._id}
-                          className={`${
-                            isSelected ? "bg-purple-50" : ""
-                          } hover:bg-gray-50 ${rowColorClass} ${
-                            isTaskDisabled(account["col20"])
+                          className={`${isSelected ? "bg-purple-50" : ""
+                            } hover:bg-gray-50 ${rowColorClass} ${isTaskDisabled(account["col20"])
                               ? "opacity-50 bg-gray-100 cursor-not-allowed"
                               : ""
-                          }`}
+                            }`}
                         >
                           <td className="px-6 py-4 whitespace-nowrap">
                             <input
@@ -2247,27 +2274,24 @@ function DelegationDataPage() {
                             </div>
                           </td>
                           <td
-                            className={`px-6 py-4 whitespace-nowrap ${
-                              !account["col17"] ? "bg-yellow-50" : ""
-                            }`}
+                            className={`px-6 py-4 whitespace-nowrap ${!account["col17"] ? "bg-yellow-50" : ""
+                              }`}
                           >
                             <div className="text-sm text-gray-900">
                               {formatDateForDisplay(account["col6"])}
                             </div>
                           </td>
                           <td
-                            className={`px-6 py-4 whitespace-nowrap ${
-                              !account["col17"] ? "bg-green-50" : ""
-                            }`}
+                            className={`px-6 py-4 whitespace-nowrap ${!account["col17"] ? "bg-green-50" : ""
+                              }`}
                           >
                             <div className="text-sm text-gray-900">
                               {formatDateForDisplay(account["col10"])}
                             </div>
                           </td>
                           <td
-                            className={`px-6 py-4 whitespace-nowrap ${
-                              !account["col17"] ? "bg-blue-50" : ""
-                            }`}
+                            className={`px-6 py-4 whitespace-nowrap ${!account["col17"] ? "bg-blue-50" : ""
+                              }`}
                           >
                             <select
                               disabled={
@@ -2285,9 +2309,8 @@ function DelegationDataPage() {
                             </select>
                           </td>
                           <td
-                            className={`px-6 py-4 whitespace-nowrap ${
-                              !account["col17"] ? "bg-indigo-50" : ""
-                            }`}
+                            className={`px-6 py-4 whitespace-nowrap ${!account["col17"] ? "bg-indigo-50" : ""
+                              }`}
                           >
                             <input
                               type="date"
@@ -2298,18 +2321,18 @@ function DelegationDataPage() {
                               value={
                                 nextTargetDate[account._id]
                                   ? (() => {
-                                      const dateStr =
-                                        nextTargetDate[account._id];
-                                      if (dateStr && dateStr.includes("/")) {
-                                        const [day, month, year] =
-                                          dateStr.split("/");
-                                        return `${year}-${month.padStart(
-                                          2,
-                                          "0"
-                                        )}-${day.padStart(2, "0")}`;
-                                      }
-                                      return dateStr;
-                                    })()
+                                    const dateStr =
+                                      nextTargetDate[account._id];
+                                    if (dateStr && dateStr.includes("/")) {
+                                      const [day, month, year] =
+                                        dateStr.split("/");
+                                      return `${year}-${month.padStart(
+                                        2,
+                                        "0"
+                                      )}-${day.padStart(2, "0")}`;
+                                    }
+                                    return dateStr;
+                                  })()
                                   : ""
                               }
                               onChange={(e) => {
@@ -2330,9 +2353,8 @@ function DelegationDataPage() {
                             />
                           </td>
                           <td
-                            className={`px-6 py-4 whitespace-nowrap ${
-                              !account["col17"] ? "bg-purple-50" : ""
-                            }`}
+                            className={`px-6 py-4 whitespace-nowrap ${!account["col17"] ? "bg-purple-50" : ""
+                              }`}
                           >
                             <input
                               type="text"
@@ -2349,9 +2371,8 @@ function DelegationDataPage() {
                             />
                           </td>
                           <td
-                            className={`px-6 py-4 whitespace-nowrap ${
-                              !account["col17"] ? "bg-orange-50" : ""
-                            }`}
+                            className={`px-6 py-4 whitespace-nowrap ${!account["col17"] ? "bg-orange-50" : ""
+                              }`}
                           >
                             {account.image ? (
                               <div className="flex items-center">
@@ -2384,11 +2405,10 @@ function DelegationDataPage() {
                               </div>
                             ) : (
                               <label
-                                className={`flex items-center cursor-pointer ${
-                                  account["col9"]?.toUpperCase() === "YES"
-                                    ? "text-red-600 font-medium"
-                                    : "text-purple-600"
-                                } hover:text-purple-800`}
+                                className={`flex items-center cursor-pointer ${account["col9"]?.toUpperCase() === "YES"
+                                  ? "text-red-600 font-medium"
+                                  : "text-purple-600"
+                                  } hover:text-purple-800`}
                               >
                                 <Upload className="w-4 h-4 mr-1" />
                                 <span className="text-xs">

@@ -1964,11 +1964,11 @@ const CalendarUI = ({ userRole, userName, displayName }) => {
               validRange={
                 lastWorkingDate
                   ? {
-                      start: new Date(
-                        new Date().setDate(new Date().getDate() + 1)
-                      ),
-                      end: lastWorkingDate,
-                    }
+                    start: new Date(
+                      new Date().setDate(new Date().getDate() + 1)
+                    ),
+                    end: lastWorkingDate,
+                  }
                   : {}
               }
               eventContent={(arg) => {
@@ -2168,11 +2168,10 @@ const TaskModal = ({
           <div className="flex flex-wrap gap-2 mb-3">
             <button
               onClick={() => setStatusFilter("all")}
-              className={`px-3 sm:px-4 py-1.5 rounded-lg font-medium transition-all text-xs sm:text-sm ${
-                statusFilter === "all"
-                  ? "bg-gray-800 text-white shadow-sm"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
+              className={`px-3 sm:px-4 py-1.5 rounded-lg font-medium transition-all text-xs sm:text-sm ${statusFilter === "all"
+                ? "bg-gray-800 text-white shadow-sm"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
             >
               All Tasks
             </button>
@@ -2210,9 +2209,8 @@ const TaskModal = ({
             </select>
             <input
               type="text"
-              placeholder={`Search by ${
-                filterType === "name" ? "person name" : "task ID"
-              }...`}
+              placeholder={`Search by ${filterType === "name" ? "person name" : "task ID"
+                }...`}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="flex-1 px-3 sm:px-4 py-2 border border-gray-300 rounded-lg text-gray-700 placeholder-gray-400 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -2294,11 +2292,10 @@ const TaskModal = ({
                               </span>
                             )}
                             <span
-                              className={`px-2 py-1 rounded-md font-medium ${
-                                t.status === "done"
-                                  ? "bg-green-100 text-green-700"
-                                  : "bg-yellow-100 text-yellow-700"
-                              }`}
+                              className={`px-2 py-1 rounded-md font-medium ${t.status === "done"
+                                ? "bg-green-100 text-green-700"
+                                : "bg-yellow-100 text-yellow-700"
+                                }`}
                             >
                               {t.status === "done"
                                 ? "✓ Completed"
@@ -2315,8 +2312,8 @@ const TaskModal = ({
                                     t.priority === "high"
                                       ? "#ef4444"
                                       : t.priority === "medium"
-                                      ? "#f59e0b"
-                                      : "#10b981",
+                                        ? "#f59e0b"
+                                        : "#10b981",
                                 }}
                               >
                                 {t.priority.toUpperCase()}

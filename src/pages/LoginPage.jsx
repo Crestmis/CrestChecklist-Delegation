@@ -35,35 +35,35 @@ const LoginPage = () => {
   useEffect(() => {
     const fetchMasterData = async () => {
       const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzXDZKaK19qMnm2SdqDjEMzusD5vFISI9IRH4ce4xFlTggpElU9ikpJU2ULfkGqvf9VMA/exec"
-  
+
       try {
         setIsDataLoading(true)
-  
+
         // Get the spreadsheet ID from your Apps Script
         const SPREADSHEET_ID = "1hP6T2p2raJaxNSG3LtFbnIexNxJmU2TskmKDwaBX2hE"
-  
+
         // Construct the URL to read the sheet data directly
         const sheetUrl = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=master`
-  
+
         const response = await fetch(sheetUrl)
         const text = await response.text()
-  
+
         // Parse the Google Sheets JSON response
         const jsonString = text.substring(47).slice(0, -2) // Remove Google's wrapper
         const data = JSON.parse(jsonString)
-  
+
         // Create userCredentials, userRoles, and userDepartments objects from the sheet data
         const userCredentials = {}
         const userRoles = {}
         const userDepartments = {} // NEW: Store departments
-  
+
         // Process the data rows (skip header row if it exists)
         if (data.table && data.table.rows) {
-  
+
           // Start from index 1 to skip header row (adjust if needed)
           for (let i = 1; i < data.table.rows.length; i++) {
             const row = data.table.rows[i]
-  
+
             // Extract data from columns:
             // Column A (0) = Department
             // Column C (2) = Username
@@ -73,56 +73,56 @@ const LoginPage = () => {
             const username = row.c[2] ? String(row.c[2].v || '').trim().toLowerCase() : '';
             const password = row.c[3] ? String(row.c[3].v || '').trim() : '';
             const role = row.c[4] ? String(row.c[4].v || '').trim() : 'user';
-  
-  
+
+
             // Only process if we have both username and password
             if (username && password && password.trim() !== '') {
               // Check if the role is any kind of inactive status
               if (isInactiveRole(role)) {
                 continue; // Skip this user
               }
-  
+
               // Store normalized role for comparison
               const normalizedRole = role.toLowerCase();
-  
+
               // Store in our maps
               userCredentials[username] = password;
               userRoles[username] = normalizedRole;
               userDepartments[username] = department; // NEW: Store department
-  
+
             }
           }
         }
-  
+
         setMasterData({ userCredentials, userRoles, userDepartments })
-  
+
         // Debug - check admin roles specifically
         const adminUsers = Object.entries(userRoles)
           .filter(([, role]) => role === 'admin')
           .map(([username]) => username);
-  
+
       } catch (error) {
         console.error("Error Fetching Master Data:", error)
-  
+
         // Fallback: Try the alternative method using your Apps Script
         try {
           const fallbackResponse = await fetch(SCRIPT_URL, {
             method: 'GET'
           })
-  
+
           if (fallbackResponse.ok) {
             showToast("Unable to load user data. Please contact administrator.", "error")
           }
         } catch (fallbackError) {
           console.error("Fallback also failed:", fallbackError);
         }
-  
+
         showToast(`Network error: ${error.message}. Please try again later.`, "error")
       } finally {
         setIsDataLoading(false)
       }
     }
-  
+
     fetchMasterData()
   }, [])
 
@@ -134,30 +134,30 @@ const LoginPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setIsLoginLoading(true)
-  
+
     try {
       const trimmedUsername = formData.username.trim().toLowerCase()
       const trimmedPassword = formData.password.trim()
-  
-  
+
+
       // Check if the username exists in our credentials map
       if (trimmedUsername in masterData.userCredentials) {
         const correctPassword = masterData.userCredentials[trimmedUsername]
         const userRole = masterData.userRoles[trimmedUsername]
         const userDepartment = masterData.userDepartments[trimmedUsername] // NEW: Get department
-  
-  
+
+
         // Check if password matches
         if (correctPassword === trimmedPassword) {
           // Store user info in sessionStorage
           sessionStorage.setItem('username', trimmedUsername)
-  
+
           // Check if user is admin - explicitly compare with the string "admin"
           const isAdmin = userRole === "admin";
-  
+
           // Set role based on the fetched role
           sessionStorage.setItem('role', userRole)
-  
+
           // NEW: FIXED - Set department for all users
           if (isAdmin) {
             // Admin users see all departments - store their actual department
@@ -168,10 +168,10 @@ const LoginPage = () => {
             sessionStorage.setItem('department', userDepartment || trimmedUsername)
             sessionStorage.setItem('isAdmin', 'false')
           }
-  
+
           // Navigate to dashboard
           navigate("/dashboard/admin")
-  
+
           showToast(`Login successful. Welcome, ${trimmedUsername}!`, "success")
           return
         } else {
@@ -180,7 +180,7 @@ const LoginPage = () => {
       } else {
         showToast("Username or password is incorrect. Please try again.", "error")
       }
-  
+
       // If we got here, login failed
       console.error("Login Failed", {
         usernameExists: trimmedUsername in masterData.userCredentials,

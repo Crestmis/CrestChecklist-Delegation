@@ -197,6 +197,56 @@ function DelegationDataPage() {
     );
   }, []);
 
+  // ✅ NEW FUNCTION: Get planned label based on col10 (new deadline date)
+  const getPlannedLabel = useCallback((plannedDateStr) => {
+    if (isEmpty(plannedDateStr)) {
+      return {
+        text: "Pending",
+        color: "bg-gray-100 text-gray-800"
+      };
+    }
+
+    const today = new Date();
+    today.setHours(0,0,0,0);
+
+    const plannedDate = parseDateFromDDMMYYYY(plannedDateStr);
+
+    if (!plannedDate) {
+      return {
+        text: "Pending",
+        color: "bg-gray-100 text-gray-800"
+      };
+    }
+
+    plannedDate.setHours(0,0,0,0);
+
+    if (plannedDate.getTime() === today.getTime()) {
+      return {
+        text: "Today",
+        color: "bg-green-100 text-green-800"
+      };
+    }
+
+    if (plannedDate > today) {
+      return {
+        text: "Upcoming",
+        color: "bg-blue-100 text-blue-800"
+      };
+    }
+
+    if (plannedDate < today) {
+      return {
+        text: "Overdue",
+        color: "bg-red-100 text-red-800"
+      };
+    }
+
+    return {
+      text: "Pending",
+      color: "bg-gray-100 text-gray-800"
+    };
+  }, [isEmpty, parseDateFromDDMMYYYY]);
+
   useEffect(() => {
     if (accountData.length > 0) {
       const counts = {
@@ -2219,16 +2269,27 @@ function DelegationDataPage() {
                               : ""
                             }`}
                         >
+                          {/* ✅ UPDATED: Checkbox column with planned label */}
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <input
-                              type="checkbox"
-                              className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
-                              checked={isSelected}
-                              onChange={(e) =>
-                                handleCheckboxClick(e, account._id)
-                              }
-                              disabled={isTaskDisabled(account["col20"])}
-                            />
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                                checked={isSelected}
+                                onChange={(e) =>
+                                  handleCheckboxClick(e, account._id)
+                                }
+                                disabled={isTaskDisabled(account["col20"])}
+                              />
+                              {(() => {
+                                const label = getPlannedLabel(account["col10"]);
+                                return (
+                                  <span className={`px-2 py-1 text-xs rounded ${label.color}`}>
+                                    {label.text}
+                                  </span>
+                                );
+                              })()}
+                            </div>
                           </td>
 
                           <td className="px-6 py-4 whitespace-nowrap">

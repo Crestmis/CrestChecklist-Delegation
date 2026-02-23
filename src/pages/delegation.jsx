@@ -487,9 +487,9 @@ function DelegationDataPage() {
         }
 
         // ONLY SHOW PLANNED DATA as requested
-        if (account["col20"] !== "Planned") {
-          return false;
-        }
+      if (!( !isEmpty(account["col10"]) && isEmpty(account["col11"]) )) {
+  return false;
+}
 
         // Status filter - apply if a status is selected (and it's not "All Status")
         if (

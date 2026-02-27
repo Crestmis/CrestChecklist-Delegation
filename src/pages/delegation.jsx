@@ -96,6 +96,18 @@ function DelegationDataPage() {
     "Verify Pending": 0,
   });
 
+  // NEW: Prevent accidental page exit during submission
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (isSubmitting) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isSubmitting]);
+
   // New task creation API call function
   const createNewTaskInSheet = async (newTaskData) => {
     try {
@@ -282,7 +294,7 @@ function DelegationDataPage() {
     }
 
     const today = new Date();
-    today.setHours(0,0,0,0);
+    today.setHours(0, 0, 0, 0);
 
     const plannedDate = parseDateFromDDMMYYYY(plannedDateStr);
 
@@ -293,7 +305,7 @@ function DelegationDataPage() {
       };
     }
 
-    plannedDate.setHours(0,0,0,0);
+    plannedDate.setHours(0, 0, 0, 0);
 
     if (plannedDate.getTime() === today.getTime()) {
       return {
@@ -425,22 +437,22 @@ function DelegationDataPage() {
   const filteredAccountData = useMemo(() => {
     const filtered = debouncedSearchTerm
       ? accountData.filter(
-          (account) =>
-            Object.values(account).some(
-              (value) =>
-                value &&
-                value
-                  .toString()
-                  .toLowerCase()
-                  .includes(debouncedSearchTerm.toLowerCase()
-                )
-            ) ||
-            (account["col20"] &&
-              account["col20"]
+        (account) =>
+          Object.values(account).some(
+            (value) =>
+              value &&
+              value
                 .toString()
                 .toLowerCase()
-                .includes(debouncedSearchTerm.toLowerCase()))
-        )
+                .includes(debouncedSearchTerm.toLowerCase()
+                )
+          ) ||
+          (account["col20"] &&
+            account["col20"]
+              .toString()
+              .toLowerCase()
+              .includes(debouncedSearchTerm.toLowerCase()))
+      )
       : accountData;
 
     return filtered
@@ -469,7 +481,7 @@ function DelegationDataPage() {
         }
 
         // ONLY SHOW PLANNED DATA as requested
-        if (!( !isEmpty(account["col10"]) && isEmpty(account["col11"]) )) {
+        if (!(!isEmpty(account["col10"]) && isEmpty(account["col11"]))) {
           return false;
         }
 
@@ -514,7 +526,7 @@ function DelegationDataPage() {
       ) {
         if (
           item["col2"]?.toLowerCase().trim() ===
-            adminDepartment.toLowerCase().trim() &&
+          adminDepartment.toLowerCase().trim() &&
           item["col4"]
         ) {
           names.add(item["col4"]);
@@ -564,13 +576,13 @@ function DelegationDataPage() {
 
         const matchesSearch = debouncedSearchTerm
           ? Object.values(item).some(
-              (value) =>
-                value &&
-                value
-                  .toString()
-                  .toLowerCase()
-                  .includes(debouncedSearchTerm.toLowerCase())
-            )
+            (value) =>
+              value &&
+              value
+                .toString()
+                .toLowerCase()
+                .includes(debouncedSearchTerm.toLowerCase())
+          )
           : true;
 
         let matchesDateRange = true;
@@ -683,8 +695,8 @@ function DelegationDataPage() {
 
                 const rowValues = row.c
                   ? row.c.map((cell) =>
-                      cell && cell.v !== undefined ? cell.v : ""
-                    )
+                    cell && cell.v !== undefined ? cell.v : ""
+                  )
                   : [];
 
                 // Map all columns including column H (col7) for user filtering, column I (col8) for Task, and column P (col15) for Admin Done
@@ -742,8 +754,8 @@ function DelegationDataPage() {
         const stableId = taskId
           ? `task_${taskId}_${googleSheetsRowIndex}`
           : `row_${googleSheetsRowIndex}_${Math.random()
-              .toString(36)
-              .substring(2, 15)}`;
+            .toString(36)
+            .substring(2, 15)}`;
 
         const rowData = {
           _id: stableId,
@@ -996,6 +1008,8 @@ function DelegationDataPage() {
   }, []);
 
   const handleSubmit = async () => {
+    if (isSubmitting) return;
+
     console.log("clicked");
     const selectedItemsArray = Array.from(selectedItems);
 
@@ -1042,275 +1056,224 @@ function DelegationDataPage() {
     setIsSubmitting(true);
     setSubmitProgress(0);
 
-    try {
-      const today = new Date();
-      const dateForSubmission = formatDateForGoogleSheets(today);
+    const submissionResults = {
+      success: [],
+      error: [],
+    };
 
+    try {
       const totalItems = selectedItemsArray.length;
       let processedCount = 0;
 
-      // Process submissions in batches
-      const batchSize = 5;
-      for (let i = 0; i < selectedItemsArray.length; i += batchSize) {
-        const batch = selectedItemsArray.slice(i, i + batchSize);
+      // STEP 1: Parallel Image Uploads (This is the slow part, we do it all at once!)
+      setSubmitProgress(5);
+      const imageUploadPromises = selectedItemsArray.map(async (id) => {
+        const item = accountData.find((account) => account._id === id);
+        if (!item || !(item.image instanceof File)) return { id, imageUrl: "" };
 
-        await Promise.all(
-          batch.map(async (id) => {
-            const item = accountData.find((account) => account._id === id);
+        try {
+          const originalTaskId = item?.col1 || "";
+          const base64Data = await fileToBase64(item.image);
+          const uploadFormData = new FormData();
+          uploadFormData.append("action", "uploadFile");
+          uploadFormData.append("base64Data", base64Data);
+          uploadFormData.append(
+            "fileName",
+            `task_${originalTaskId}_${Date.now()}.${item.image.name
+              .split(".")
+              .pop()}`
+          );
+          uploadFormData.append("mimeType", item.image.type);
+          uploadFormData.append("folderId", CONFIG.DRIVE_FOLDER_ID);
 
-            const originalTaskId = item?.col1 || "";
+          const uploadResponse = await fetch(CONFIG.APPS_SCRIPT_URL, {
+            method: "POST",
+            body: uploadFormData,
+          });
 
-            // Handle image upload if present
-            let imageUrl = "";
-            if (item.image instanceof File) {
-              try {
-                const base64Data = await fileToBase64(item.image);
-                const uploadFormData = new FormData();
-                uploadFormData.append("action", "uploadFile");
-                uploadFormData.append("base64Data", base64Data);
-                uploadFormData.append(
-                  "fileName",
-                  `task_${originalTaskId}_${Date.now()}.${item.image.name
-                    .split(".")
-                    .pop()}`
-                );
-                uploadFormData.append("mimeType", item.image.type);
-                uploadFormData.append("folderId", CONFIG.DRIVE_FOLDER_ID);
+          if (!uploadResponse.ok) throw new Error(`HTTP ${uploadResponse.status}`);
+          const uploadResult = await uploadResponse.json();
+          return {
+            id,
+            imageUrl: uploadResult.success ? uploadResult.fileUrl : "",
+            error: uploadResult.success ? null : (uploadResult.error || "Upload failed on server"),
+          };
+        } catch (uploadError) {
+          console.error(`Error uploading image for item ${id}:`, uploadError);
+          return { id, imageUrl: "", error: uploadError.message };
+        }
+      });
 
-                const uploadResponse = await fetch(CONFIG.APPS_SCRIPT_URL, {
-                  method: "POST",
-                  body: uploadFormData,
-                });
+      const uploadResultsList = await Promise.all(imageUploadPromises);
+      const imageUrlMap = uploadResultsList.reduce((acc, curr) => {
+        acc[curr.id] = curr.imageUrl;
+        return acc;
+      }, {});
 
-                const uploadResult = await uploadResponse.json();
-                if (uploadResult.success) {
-                  imageUrl = uploadResult.fileUrl;
-                }
-              } catch (uploadError) {
-                console.error("Error uploading image:", uploadError);
-              }
+      setSubmitProgress(30);
+
+      // STEP 2: Sequential Sheet Writes
+      for (const id of selectedItemsArray) {
+        try {
+          const item = accountData.find((account) => account._id === id);
+          if (!item) continue;
+
+          const originalTaskId = item?.col1 || "";
+          const imageUrl = imageUrlMap[id] || "";
+
+          // Check if it's extend date and determine action
+          const isExtendDate = statusData[id] === "Extend date";
+          const selectedDate = nextTargetDate[id];
+          let shouldCreateNewTask = false;
+
+          if (isExtendDate && selectedDate) {
+            const [day, month, year] = selectedDate.split("/");
+            const selectedDateObj = new Date(year, month - 1, day);
+            shouldCreateNewTask = isDateAfterCurrentWeekSunday(selectedDateObj);
+          }
+
+          // Format the next target date properly if it exists
+          let formattedNextTargetDate = "";
+          let nextTargetDateForGoogleSheets = null;
+
+          if (nextTargetDate[id]) {
+            const convertedDate = convertToGoogleSheetsDate(nextTargetDate[id]);
+            formattedNextTargetDate = convertedDate.formatted;
+            nextTargetDateForGoogleSheets = convertedDate.dateObject;
+          }
+
+          const now = new Date();
+          const timestampWithTime = `${now.getDate().toString().padStart(2, "0")}/${(now.getMonth() + 1).toString().padStart(2, "0")}/${now.getFullYear()} ${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}`;
+
+          if (shouldCreateNewTask) {
+            // Create new task for extension
+            const newTaskData = [
+              "", "", item.col2 || "", item.col3 || "", item.col4 || "",
+              item.col5 || "", formattedNextTargetDate, item.col7 || "",
+              item.col8 || "", item.col9 || ""
+            ];
+
+            const newTaskResult = await createNewTaskInSheet(newTaskData);
+            if (!newTaskResult.success) {
+              throw new Error(`Failed to create new task: ${newTaskResult.error}`);
             }
 
-            // Check if it's extend date and determine action
-            const isExtendDate = statusData[id] === "Extend date";
-            const selectedDate = nextTargetDate[id];
-            let shouldCreateNewTask = false;
+            // Submit history record
+            const historyRowData = [
+              timestampWithTime, originalTaskId, "Extended to new task",
+              formattedNextTargetDate, remarksData[id] || "", imageUrl,
+              "", username, item.col5 || "", item.col3 || "",
+              "", "", "", "", "", "", item.col2 || "",
+            ];
 
-            if (isExtendDate && selectedDate) {
-              const [day, month, year] = selectedDate.split("/");
-              const selectedDateObj = new Date(year, month - 1, day);
-              shouldCreateNewTask = isDateAfterCurrentWeekSunday(selectedDateObj);
+            const historyFormData = new FormData();
+            historyFormData.append("sheetName", CONFIG.TARGET_SHEET_NAME);
+            historyFormData.append("action", "insert");
+            historyFormData.append("rowData", JSON.stringify(historyRowData));
+            historyFormData.append("forceUserMode", "true");
+            historyFormData.append("submitterType", "user");
+            historyFormData.append("skipAdminLogic", "true");
+
+            const historyResponse = await fetch(CONFIG.APPS_SCRIPT_URL, {
+              method: "POST",
+              body: historyFormData,
+              keepalive: true,
+            });
+
+            if (!historyResponse.ok) throw new Error("History submission HTTP error");
+            const historyResult = await historyResponse.json();
+            if (!historyResult.success) throw new Error(historyResult.error || "History submission failed");
+          } else {
+            // Regular submission
+            const newRowData = [
+              timestampWithTime, item.col1 || "", statusData[id] || "",
+              formattedNextTargetDate, remarksData[id] || "", imageUrl,
+              "", username, item.col5 || "", item.col3 || "",
+              "", "", "", "", "", "", item.col2 || "",
+            ];
+
+            const insertFormData = new FormData();
+            insertFormData.append("sheetName", CONFIG.TARGET_SHEET_NAME);
+            insertFormData.append("action", "insert");
+            insertFormData.append("rowData", JSON.stringify(newRowData));
+            insertFormData.append("dateFormat", "DD/MM/YYYY");
+            insertFormData.append("timestampColumn", "0");
+            insertFormData.append("nextTargetDateColumn", "3");
+            insertFormData.append("forceUserMode", "true");
+            insertFormData.append("submitterType", "user");
+            insertFormData.append("skipAdminLogic", "true");
+
+            const dateMetadata = {
+              columns: {
+                0: { type: "datetime", format: "DD/MM/YYYY HH:mm:ss" },
+                3: { type: "date", format: "DD/MM/YYYY" },
+              },
+            };
+            insertFormData.append("dateMetadata", JSON.stringify(dateMetadata));
+
+            if (nextTargetDateForGoogleSheets) {
+              insertFormData.append("nextTargetDateObject", nextTargetDateForGoogleSheets.toISOString());
             }
 
-            // Format the next target date properly if it exists
-            let formattedNextTargetDate = "";
-            let nextTargetDateForGoogleSheets = null;
+            const response = await fetch(CONFIG.APPS_SCRIPT_URL, {
+              method: "POST",
+              body: insertFormData,
+              keepalive: true,
+            });
 
-            if (nextTargetDate[id]) {
-              const convertedDate = convertToGoogleSheetsDate(
-                nextTargetDate[id]
-              );
-              formattedNextTargetDate = convertedDate.formatted;
-              nextTargetDateForGoogleSheets = convertedDate.dateObject;
-            }
+            if (!response.ok) throw new Error("Regular submission HTTP error");
+            const result = await response.json();
+            if (!result.success) throw new Error(result.error || "Regular submission failed");
+          }
 
-            if (shouldCreateNewTask) {
-              // Create new task for extension
-              const newTaskData = [
-                "", // A: Empty timestamp - auto-filled by server
-                "", // B: Empty - server will generate new numeric Task ID
-                item.col2 || "", // C: Department
-                item.col3 || "", // D: Given By
-                item.col4 || "", // E: Name
-                item.col5 || "", // F: Task description
-                formattedNextTargetDate, // G: New start date
-                item.col7 || "", // H: Frequency
-                item.col8 || "", // I: Enable Reminders
-                item.col9 || "", // J: Require Attachment
-              ];
-
-              const newTaskResult = await createNewTaskInSheet(newTaskData);
-
-              if (!newTaskResult.success) {
-                throw new Error(
-                  `Failed to create new task: ${newTaskResult.error}`
-                );
-              }
-
-              // Submit history record to DELEGATION DONE sheet with TIMESTAMP (date + time)
-              const now = new Date();
-              const timestampWithTime = `${now
-                .getDate()
-                .toString()
-                .padStart(2, "0")}/${(now.getMonth() + 1)
-                  .toString()
-                  .padStart(2, "0")}/${now.getFullYear()} ${now
-                    .getHours()
-                    .toString()
-                    .padStart(2, "0")}:${now
-                      .getMinutes()
-                      .toString()
-                      .padStart(2, "0")}:${now
-                        .getSeconds()
-                        .toString()
-                        .padStart(2, "0")}`;
-
-              const historyRowData = [
-                timestampWithTime, // A (0): Timestamp
-                originalTaskId, // B (1): Task ID
-                "Extended to new task", // C (2): Status
-                formattedNextTargetDate, // D (3): Next extend date
-                remarksData[id] || "", // E (4): Reason/Remarks
-                imageUrl, // F (5): Upload Image
-                "", // G (6): Condition Date (empty)
-                username, // H (7): Name
-                item.col5 || "", // I (8): Task Description
-                item.col3 || "", // J (9): Given By
-                "", // K (10): Admin Done - LEAVE EMPTY
-                "", // L (11): Reserved
-                "", // M (12): Reserved
-                "", // N (13): Reserved
-                "", // O (14): Reserved
-                "", // P (15): Admin Done 2 - LEAVE EMPTY
-                item.col2 || "", // Q (16): Department
-              ];
-
-              const historyFormData = new FormData();
-              historyFormData.append("sheetName", CONFIG.TARGET_SHEET_NAME);
-              historyFormData.append("action", "insert");
-              historyFormData.append("rowData", JSON.stringify(historyRowData));
-              historyFormData.append("forceUserMode", "true");
-              historyFormData.append("submitterType", "user");
-              historyFormData.append("skipAdminLogic", "true");
-
-              const historyResponse = await fetch(CONFIG.APPS_SCRIPT_URL, {
-                method: "POST",
-                body: historyFormData,
-              });
-
-              if (!historyResponse.ok) {
-                throw new Error(
-                  "Failed to submit history record to DELEGATION DONE sheet"
-                );
-              }
-
-              const historyResult = await historyResponse.json();
-              if (!historyResult.success) {
-                throw new Error(
-                  `History submission failed: ${historyResult.error || "Unknown error"}`
-                );
-              }
-            } else {
-              // Regular submission to DELEGATION DONE sheet with TIMESTAMP (date + time)
-              const now = new Date();
-              const timestampWithTime = `${now
-                .getDate()
-                .toString()
-                .padStart(2, "0")}/${(now.getMonth() + 1)
-                  .toString()
-                  .padStart(2, "0")}/${now.getFullYear()} ${now
-                    .getHours()
-                    .toString()
-                    .padStart(2, "0")}:${now
-                      .getMinutes()
-                      .toString()
-                      .padStart(2, "0")}:${now
-                        .getSeconds()
-                        .toString()
-                        .padStart(2, "0")}`;
-
-              const newRowData = [
-                timestampWithTime, // A (0): Timestamp
-                item.col1 || "", // B (1): Task ID
-                statusData[id] || "", // C (2): Status
-                formattedNextTargetDate, // D (3): Next extend date
-                remarksData[id] || "", // E (4): Reason/Remarks
-                imageUrl, // F (5): Upload Image
-                "", // G (6): Condition Date (empty)
-                username, // H (7): Name
-                item.col5 || "", // I (8): Task Description
-                item.col3 || "", // J (9): Given By
-                "", // K (10): Admin Done - LEAVE EMPTY
-                "", // L (11): Reserved
-                "", // M (12): Reserved
-                "", // N (13): Reserved
-                "", // O (14): Reserved
-                "", // P (15): Admin Done 2 - LEAVE EMPTY
-                item.col2 || "", // Q (16): Department
-              ];
-
-              const insertFormData = new FormData();
-              insertFormData.append("sheetName", CONFIG.TARGET_SHEET_NAME);
-              insertFormData.append("action", "insert");
-              insertFormData.append("rowData", JSON.stringify(newRowData));
-              insertFormData.append("dateFormat", "DD/MM/YYYY");
-              insertFormData.append("timestampColumn", "0");
-              insertFormData.append("nextTargetDateColumn", "3");
-              insertFormData.append("forceUserMode", "true");
-              insertFormData.append("submitterType", "user");
-              insertFormData.append("skipAdminLogic", "true");
-
-              const dateMetadata = {
-                columns: {
-                  0: { type: "datetime", format: "DD/MM/YYYY HH:mm:ss" },
-                  3: { type: "date", format: "DD/MM/YYYY" },
-                },
-              };
-              insertFormData.append("dateMetadata", JSON.stringify(dateMetadata));
-
-              if (nextTargetDateForGoogleSheets) {
-                insertFormData.append(
-                  "nextTargetDateObject",
-                  nextTargetDateForGoogleSheets.toISOString()
-                );
-              }
-
-              const response = await fetch(CONFIG.APPS_SCRIPT_URL, {
-                method: "POST",
-                body: insertFormData,
-              });
-
-              if (!response.ok) {
-                throw new Error(
-                  "Failed to submit task record to DELEGATION DONE sheet"
-                );
-              }
-
-              const result = await response.json();
-              if (!result.success) {
-                throw new Error(
-                  `Regular submission failed: ${result.error || "Unknown error"}`
-                );
-              }
-            }
-          })
-        );
-
-        processedCount += batch.length;
-        setSubmitProgress(Math.round((processedCount / totalItems) * 100));
+          submissionResults.success.push(id);
+        } catch (itemError) {
+          console.error(`Error processing item ${id}:`, itemError);
+          submissionResults.error.push({ id, message: itemError.message });
+        } finally {
+          processedCount++;
+          setSubmitProgress(Math.round(30 + (processedCount / totalItems) * 70));
+        }
       }
 
-      // Refresh data after successful submission
-      setAccountData((prev) =>
-        prev.filter((item) => !selectedItems.has(item._id))
-      );
-      setSuccessMessage(
-        `Successfully processed ${selectedItemsArray.length} task record(s)!`
-      );
-      setSelectedItems(new Set());
-      setAdditionalData({});
-      setRemarksData({});
-      setStatusData({});
-      setNextTargetDate({});
+      // Final results handling
+      const successCount = submissionResults.success.length;
+      const errorCount = submissionResults.error.length;
+
+      if (successCount > 0) {
+        const successIds = new Set(submissionResults.success);
+        setAccountData((prev) => prev.filter((item) => !successIds.has(item._id)));
+        setSelectedItems((prev) => {
+          const next = new Set(prev);
+          successIds.forEach((id) => next.delete(id));
+          return next;
+        });
+
+        // Cleanup state for successful items
+        submissionResults.success.forEach(id => {
+          setRemarksData(prev => { const n = { ...prev }; delete n[id]; return n; });
+          setStatusData(prev => { const n = { ...prev }; delete n[id]; return n; });
+          setNextTargetDate(prev => { const n = { ...prev }; delete n[id]; return n; });
+        });
+
+        const msg = errorCount === 0
+          ? `Successfully submitted all ${successCount} task(s)!`
+          : `Submitted ${successCount} task(s), but ${errorCount} failed. See console for details.`;
+        setSuccessMessage(msg);
+      } else if (errorCount > 0) {
+        alert(`${errorCount} tasks failed to submit. First error: ${submissionResults.error[0].message}`);
+      }
 
       setTimeout(() => {
         fetchSheetData();
       }, 2000);
-    } catch (error) {
-      console.error("Submission error:", error);
-      alert(`Failed to submit task records: ${error.message}`);
+
+    } catch (globalError) {
+      console.error("Critical submission error:", globalError);
+      alert(`A critical error occurred: ${globalError.message}`);
     } finally {
       setIsSubmitting(false);
+      setSubmitProgress(0);
     }
   };
 
@@ -1524,10 +1487,9 @@ function DelegationDataPage() {
                 ) : selectedItemsCount === 0 ? (
                   "Submit Selected (0)"
                 ) : !allSelectedHaveStatus ? (
-                  `Select Status for ${
-                    selectedItemsCount -
-                    Array.from(selectedItems).filter((id) => statusData[id])
-                      .length
+                  `Select Status for ${selectedItemsCount -
+                  Array.from(selectedItems).filter((id) => statusData[id])
+                    .length
                   } Item(s)`
                 ) : (
                   `Submit Selected (${selectedItemsCount})`
@@ -1710,11 +1672,10 @@ function DelegationDataPage() {
             </h2>
             <p className="text-sm text-purple-600">
               {showHistory
-                ? `${CONFIG.PAGE_CONFIG.historyDescription} for ${
-                    userRole === "admin" || userRole === "main admin"
-                      ? "all"
-                      : "your"
-                  } tasks`
+                ? `${CONFIG.PAGE_CONFIG.historyDescription} for ${userRole === "admin" || userRole === "main admin"
+                  ? "all"
+                  : "your"
+                } tasks`
                 : CONFIG.PAGE_CONFIG.description}
             </p>
           </div>
@@ -1806,9 +1767,9 @@ function DelegationDataPage() {
                                   (item) => !isItemAdminDone(item)
                                 ).length > 0 &&
                                 selectedHistoryItems.length ===
-                                  fillteredHistoryDataByMainAdmin.filter(
-                                    (item) => !isItemAdminDone(item)
-                                  ).length
+                                fillteredHistoryDataByMainAdmin.filter(
+                                  (item) => !isItemAdminDone(item)
+                                ).length
                               }
                               onChange={(e) => {
                                 const unprocessedItems =
@@ -1884,61 +1845,57 @@ function DelegationDataPage() {
                         return (
                           <tr
                             key={history._id}
-                            className={`hover:bg-gray-50 ${
-                              isAdminDone ? "opacity-70 bg-gray-100" : ""
-                            }`}
+                            className={`hover:bg-gray-50 ${isAdminDone ? "opacity-70 bg-gray-100" : ""
+                              }`}
                           >
                             {(userRole === "admin" ||
                               userRole === "main admin") && (
-                              <td className="w-12 px-3 py-4">
-                                <div className="flex flex-col items-center">
-                                  <input
-                                    type="checkbox"
-                                    className={`h-4 w-4 rounded border-gray-300 ${
-                                      isAdminDone
+                                <td className="w-12 px-3 py-4">
+                                  <div className="flex flex-col items-center">
+                                    <input
+                                      type="checkbox"
+                                      className={`h-4 w-4 rounded border-gray-300 ${isAdminDone
                                         ? "text-green-600 bg-green-100"
                                         : "text-green-600 focus:ring-green-500"
-                                    }`}
-                                    checked={isAdminDone || isSelected}
-                                    disabled={isAdminDone}
-                                    onChange={() => {
-                                      if (!isAdminDone) {
-                                        setSelectedHistoryItems((prev) =>
-                                          isSelected
-                                            ? prev.filter(
+                                        }`}
+                                      checked={isAdminDone || isSelected}
+                                      disabled={isAdminDone}
+                                      onChange={() => {
+                                        if (!isAdminDone) {
+                                          setSelectedHistoryItems((prev) =>
+                                            isSelected
+                                              ? prev.filter(
                                                 (item) =>
                                                   item._id !== history._id
                                               )
-                                            : [...prev, history]
-                                        );
-                                      }
-                                    }}
-                                  />
-                                  <span
-                                    className={`text-xs mt-1 text-center break-words ${
-                                      isAdminDone
+                                              : [...prev, history]
+                                          );
+                                        }
+                                      }}
+                                    />
+                                    <span
+                                      className={`text-xs mt-1 text-center break-words ${isAdminDone
                                         ? "text-green-600"
                                         : "text-gray-400"
-                                    }`}
-                                  >
-                                    {isAdminDone ? "Done" : "Mark Done"}
-                                  </span>
-                                </div>
-                              </td>
-                            )}
+                                        }`}
+                                    >
+                                      {isAdminDone ? "Done" : "Mark Done"}
+                                    </span>
+                                  </div>
+                                </td>
+                              )}
                             <td className="px-6 py-4 whitespace-nowrap">
                               <span
-                                className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                  history["col20"] === "Done"
-                                    ? "bg-green-100 text-green-800"
-                                    : history["col20"] === "Pending"
+                                className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${history["col20"] === "Done"
+                                  ? "bg-green-100 text-green-800"
+                                  : history["col20"] === "Pending"
                                     ? "bg-yellow-100 text-yellow-800"
                                     : history["col20"] === "Verify Pending"
-                                    ? "bg-orange-100 text-orange-800"
-                                    : history["col20"] === "Planned"
-                                    ? "bg-blue-100 text-blue-800"
-                                    : "bg-gray-100 text-gray-800"
-                                }`}
+                                      ? "bg-orange-100 text-orange-800"
+                                      : history["col20"] === "Planned"
+                                        ? "bg-blue-100 text-blue-800"
+                                        : "bg-gray-100 text-gray-800"
+                                  }`}
                               >
                                 {history["col20"] || "—"}
                               </span>
@@ -1970,13 +1927,12 @@ function DelegationDataPage() {
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <span
-                                className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                  history["col2"] === "Done"
-                                    ? "bg-green-100 text-green-800"
-                                    : history["col2"] === "Extend date"
+                                className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${history["col2"] === "Done"
+                                  ? "bg-green-100 text-green-800"
+                                  : history["col2"] === "Extend date"
                                     ? "bg-yellow-100 text-yellow-800"
                                     : "bg-gray-100 text-gray-800"
-                                }`}
+                                  }`}
                               >
                                 {history["col2"] || "—"}
                               </span>
@@ -2020,12 +1976,12 @@ function DelegationDataPage() {
                             </td>
                             {(userRole === "admin" ||
                               userRole === "main admin") && (
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm text-gray-900">
-                                  {history["col7"] || "—"}
-                                </div>
-                              </td>
-                            )}
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="text-sm text-gray-900">
+                                    {history["col7"] || "—"}
+                                  </div>
+                                </td>
+                              )}
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="text-sm text-gray-900">
                                 {history["col9"] || "—"}
@@ -2033,30 +1989,30 @@ function DelegationDataPage() {
                             </td>
                             {(userRole === "admin" ||
                               userRole === "main admin") && (
-                              <td className="px-6 py-4 bg-gray-50 min-w-[140px]">
-                                {isAdminDone ? (
-                                  <div className="text-sm text-gray-900 break-words">
-                                    <div className="flex items-center">
-                                      <div className="flex items-center justify-center w-4 h-4 mr-2 text-green-600 bg-green-100 border-gray-300 rounded">
-                                        <span className="text-xs text-green-600">
-                                          ✓
-                                        </span>
-                                      </div>
-                                      <div className="flex flex-col">
-                                        <div className="text-sm font-medium text-green-700">
-                                          Done
+                                <td className="px-6 py-4 bg-gray-50 min-w-[140px]">
+                                  {isAdminDone ? (
+                                    <div className="text-sm text-gray-900 break-words">
+                                      <div className="flex items-center">
+                                        <div className="flex items-center justify-center w-4 h-4 mr-2 text-green-600 bg-green-100 border-gray-300 rounded">
+                                          <span className="text-xs text-green-600">
+                                            ✓
+                                          </span>
+                                        </div>
+                                        <div className="flex flex-col">
+                                          <div className="text-sm font-medium text-green-700">
+                                            Done
+                                          </div>
                                         </div>
                                       </div>
                                     </div>
-                                  </div>
-                                ) : (
-                                  <div className="flex items-center text-sm text-gray-400">
-                                    <div className="w-4 h-4 mr-2 border-gray-300 rounded"></div>
-                                    <span>Pending</span>
-                                  </div>
-                                )}
-                              </td>
-                            )}
+                                  ) : (
+                                    <div className="flex items-center text-sm text-gray-400">
+                                      <div className="w-4 h-4 mr-2 border-gray-300 rounded"></div>
+                                      <span>Pending</span>
+                                    </div>
+                                  )}
+                                </td>
+                              )}
                           </tr>
                         );
                       })
@@ -2093,7 +2049,7 @@ function DelegationDataPage() {
                         checked={
                           filteredAccountDataByMainAdming.length > 0 &&
                           selectedItems.size ===
-                            filteredAccountDataByMainAdming.length
+                          filteredAccountDataByMainAdming.length
                         }
                         onChange={handleSelectAllItems}
                       />
@@ -2147,13 +2103,11 @@ function DelegationDataPage() {
                       return (
                         <tr
                           key={account._id}
-                          className={`${
-                            isSelected ? "bg-purple-50" : ""
-                          } hover:bg-gray-50 ${rowColorClass} ${
-                            isTaskDisabled(account["col20"])
+                          className={`${isSelected ? "bg-purple-50" : ""
+                            } hover:bg-gray-50 ${rowColorClass} ${isTaskDisabled(account["col20"])
                               ? "opacity-50 bg-gray-100 cursor-not-allowed"
                               : ""
-                          }`}
+                            }`}
                         >
                           {/* Checkbox column with planned label */}
                           <td className="px-6 py-4 whitespace-nowrap">
@@ -2258,18 +2212,18 @@ function DelegationDataPage() {
                               value={
                                 nextTargetDate[account._id]
                                   ? (() => {
-                                      const dateStr =
-                                        nextTargetDate[account._id];
-                                      if (dateStr && dateStr.includes("/")) {
-                                        const [day, month, year] =
-                                          dateStr.split("/");
-                                        return `${year}-${month.padStart(
-                                          2,
-                                          "0"
-                                        )}-${day.padStart(2, "0")}`;
-                                      }
-                                      return dateStr;
-                                    })()
+                                    const dateStr =
+                                      nextTargetDate[account._id];
+                                    if (dateStr && dateStr.includes("/")) {
+                                      const [day, month, year] =
+                                        dateStr.split("/");
+                                      return `${year}-${month.padStart(
+                                        2,
+                                        "0"
+                                      )}-${day.padStart(2, "0")}`;
+                                    }
+                                    return dateStr;
+                                  })()
                                   : ""
                               }
                               onChange={(e) => {
@@ -2335,11 +2289,10 @@ function DelegationDataPage() {
                               </div>
                             ) : (
                               <label
-                                className={`flex items-center cursor-pointer ${
-                                  account["col9"]?.toUpperCase() === "YES"
-                                    ? "text-red-600 font-medium"
-                                    : "text-purple-600"
-                                } hover:text-purple-800`}
+                                className={`flex items-center cursor-pointer ${account["col9"]?.toUpperCase() === "YES"
+                                  ? "text-red-600 font-medium"
+                                  : "text-purple-600"
+                                  } hover:text-purple-800`}
                               >
                                 <Upload className="w-4 h-4 mr-1" />
                                 <span className="text-xs">

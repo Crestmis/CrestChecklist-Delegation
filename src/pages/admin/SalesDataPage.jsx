@@ -137,13 +137,28 @@ function AccountDataPage() {
 
   // UPDATED: Parse date from DD/MM/YYYY or DD/MM/YYYY HH:MM:SS format for comparison
   const parseDateFromDDMMYYYY = (dateStr) => {
-    if (!dateStr || typeof dateStr !== "string") return null
+    if (!dateStr || typeof dateStr !== "string") return null;
+
+    // Handle Google Sheets date format first if it sneaks through
+    if (dateStr.startsWith("Date(")) {
+      const match = /Date\((\d+),(\d+),(\d+)\)/.exec(dateStr);
+      if (match) {
+        return new Date(Number.parseInt(match[1], 10), Number.parseInt(match[2], 10), Number.parseInt(match[3], 10));
+      }
+    }
 
     // Extract just the date part if it includes time
-    const datePart = dateStr.includes(" ") ? dateStr.split(" ")[0] : dateStr
-    const parts = datePart.split("/")
-    if (parts.length !== 3) return null
-    return new Date(parts[2], parts[1] - 1, parts[0])
+    const datePart = dateStr.includes(" ") ? dateStr.split(" ")[0] : dateStr;
+    const parts = datePart.split("/");
+    if (parts.length === 3) {
+      return new Date(Number.parseInt(parts[2], 10), Number.parseInt(parts[1], 10) - 1, Number.parseInt(parts[0], 10));
+    }
+
+    // Try a standard date parse as fallback
+    const fallbackDate = new Date(dateStr);
+    if (!isNaN(fallbackDate.getTime())) return fallbackDate;
+
+    return null;
   }
 
   const sortDateWise = (a, b) => {
@@ -277,15 +292,32 @@ function AccountDataPage() {
   };
   // Memoized filtered data to prevent unnecessary re-renders
   const filteredAccountData = useMemo(() => {
-    const filtered = searchTerm
-      ? accountData.filter((account) =>
-        Object.values(account).some(
-          (value) => value && value.toString().toLowerCase().includes(searchTerm.toLowerCase()),
-        ),
-      )
-      : accountData
-    return filtered.sort(sortDateWise)
-  }, [accountData, searchTerm])
+    return accountData
+      .filter((account) => {
+        const matchesSearch = searchTerm
+          ? Object.values(account).some(
+            (value) => value && value.toString().toLowerCase().includes(searchTerm.toLowerCase()),
+          )
+          : true;
+        let matchesDateRange = true;
+        if (startDate || endDate) {
+          const itemDate = parseDateFromDDMMYYYY(account["col6"]); // Task Start Date is col6
+          if (!itemDate) return false;
+          if (startDate) {
+            const startDateObj = new Date(startDate);
+            startDateObj.setHours(0, 0, 0, 0);
+            if (itemDate < startDateObj) matchesDateRange = false;
+          }
+          if (endDate) {
+            const endDateObj = new Date(endDate);
+            endDateObj.setHours(23, 59, 59, 999);
+            if (itemDate > endDateObj) matchesDateRange = false;
+          }
+        }
+        return matchesSearch && matchesDateRange;
+      })
+      .sort(sortDateWise);
+  }, [accountData, searchTerm, startDate, endDate]);
 
   const filteredHistoryData = useMemo(() => {
     return historyData
@@ -761,7 +793,45 @@ function AccountDataPage() {
           <h1 className="text-2xl font-bold tracking-tight text-purple-700">
             {showHistory ? CONFIG.PAGE_CONFIG.historyTitle : CONFIG.PAGE_CONFIG.title}
           </h1>
-          <div className="flex space-x-4">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap items-center justify-end gap-4">
+            {/* Filter by Date Range */}
+            {!showHistory && (
+              <div className="flex flex-col sm:flex-row items-center gap-2 p-2 rounded-md">
+                <div className="flex items-center w-full sm:w-auto">
+                  <label htmlFor="start-date-top" className="text-xs text-gray-700 mr-1 font-medium min-w-[35px]">
+                    From
+                  </label>
+                  <input
+                    id="start-date-top"
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="text-sm border border-gray-300 rounded-md p-1.5 focus:ring-purple-500 focus:border-purple-500 w-full sm:w-auto"
+                  />
+                </div>
+                <div className="flex items-center w-full sm:w-auto mt-2 sm:mt-0">
+                  <label htmlFor="end-date-top" className="text-xs text-gray-700 mr-1 font-medium min-w-[35px]">
+                    To
+                  </label>
+                  <input
+                    id="end-date-top"
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="text-sm border border-gray-300 rounded-md p-1.5 focus:ring-purple-500 focus:border-purple-500 w-full sm:w-auto"
+                  />
+                </div>
+                {(startDate || endDate) && (
+                  <button
+                    onClick={() => { setStartDate(""); setEndDate(""); }}
+                    className="p-1.5 bg-red-100 text-red-700 rounded hover:bg-red-200 w-full sm:w-auto mt-2 sm:mt-0"
+                    title="Clear Dates"
+                  >
+                    <X size={16} className="mx-auto" />
+                  </button>
+                )}
+              </div>
+            )}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
               <input
@@ -769,7 +839,7 @@ function AccountDataPage() {
                 placeholder={showHistory ? "Search history..." : "Search tasks..."}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 pr-4 py-2 border border-purple-200 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="pl-10 pr-4 py-2 border border-purple-200 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 max-w-xs"
               />
             </div>
             <button
@@ -882,596 +952,601 @@ function AccountDataPage() {
                 Try again
               </button>
             </div>
-          ) : showHistory ? (
+          ) : (
             <>
-              {/* History Filters */}
-              <div className="p-4 border-b border-purple-100 bg-gray-50">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  {getFilteredMembersList().length > 0 && (
+              {showHistory && (
+                <div className="p-4 border-b border-purple-100 bg-gray-50">
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    {getFilteredMembersList().length > 0 && (
+                      <div className="flex flex-col">
+                        <div className="mb-2 flex items-center">
+                          <span className="text-sm font-medium text-purple-700">Filter by Member:</span>
+                        </div>
+                        <div className="flex flex-wrap gap-3 max-h-32 overflow-y-auto p-2 border border-gray-200 rounded-md bg-white">
+                          {getFilteredMembersList().map((member, idx) => (
+                            <div key={idx} className="flex items-center">
+                              <input
+                                id={`member-${idx}`}
+                                type="checkbox"
+                                className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                checked={selectedMembers.includes(member)}
+                                onChange={() => handleMemberSelection(member)}
+                              />
+                              <label htmlFor={`member-${idx}`} className="ml-2 text-sm text-gray-700">
+                                {member}
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <div className="flex flex-col">
                       <div className="mb-2 flex items-center">
-                        <span className="text-sm font-medium text-purple-700">Filter by Member:</span>
+                        <span className="text-sm font-medium text-purple-700">Filter by Date Range:</span>
                       </div>
-                      <div className="flex flex-wrap gap-3 max-h-32 overflow-y-auto p-2 border border-gray-200 rounded-md bg-white">
-                        {getFilteredMembersList().map((member, idx) => (
-                          <div key={idx} className="flex items-center">
-                            <input
-                              id={`member-${idx}`}
-                              type="checkbox"
-                              className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                              checked={selectedMembers.includes(member)}
-                              onChange={() => handleMemberSelection(member)}
-                            />
-                            <label htmlFor={`member-${idx}`} className="ml-2 text-sm text-gray-700">
-                              {member}
-                            </label>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center">
+                          <label htmlFor="start-date-bottom" className="text-sm text-gray-700 mr-1">
+                            From
+                          </label>
+                          <input
+                            id="start-date-bottom"
+                            type="date"
+                            value={startDate}
+                            onChange={(e) => setStartDate(e.target.value)}
+                            className="text-sm border border-gray-200 rounded-md p-1"
+                          />
+                        </div>
+                        <div className="flex items-center">
+                          <label htmlFor="end-date-bottom" className="text-sm text-gray-700 mr-1">
+                            To
+                          </label>
+                          <input
+                            id="end-date-bottom"
+                            type="date"
+                            value={endDate}
+                            onChange={(e) => setEndDate(e.target.value)}
+                            className="text-sm border border-gray-200 rounded-md p-1"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    {(selectedMembers.length > 0 || startDate || endDate || searchTerm) && (
+                      <button
+                        onClick={resetFilters}
+                        className="px-3 py-1 bg-red-100 text-red-700 rounded-md hover:bg-red-200 text-sm"
+                      >
+                        Clear All Filters
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {showHistory ? (
+                <>
+                  {/* NEW: Confirmation Modal */}
+                  <ConfirmationModal
+                    isOpen={confirmationModal.isOpen}
+                    itemCount={confirmationModal.itemCount}
+                    onConfirm={confirmMarkDone}
+                    onCancel={() => setConfirmationModal({ isOpen: false, itemCount: 0 })}
+                  />
+
+                  {/* Task Statistics */}
+                  <div className="p-4 border-b border-purple-100 bg-blue-50">
+                    <div className="flex flex-col">
+                      <h3 className="text-sm font-medium text-blue-700 mb-2">Task Completion Statistics:</h3>
+                      <div className="flex flex-wrap gap-4">
+                        <div className="px-3 py-2 bg-white rounded-md shadow-sm">
+                          <span className="text-xs text-gray-500">Total Completed</span>
+                          <div className="text-lg font-semibold text-blue-600">{getTaskStatistics().totalCompleted}</div>
+                        </div>
+                        {(selectedMembers.length > 0 || startDate || endDate || searchTerm) && (
+                          <div className="px-3 py-2 bg-white rounded-md shadow-sm">
+                            <span className="text-xs text-gray-500">Filtered Results</span>
+                            <div className="text-lg font-semibold text-blue-600">{getTaskStatistics().filteredTotal}</div>
+                          </div>
+                        )}
+                        {selectedMembers.map((member) => (
+                          <div key={member} className="px-3 py-2 bg-white rounded-md shadow-sm">
+                            <span className="text-xs text-gray-500">{member}</span>
+                            <div className="text-lg font-semibold text-indigo-600">
+                              {getTaskStatistics().memberStats[member]}
+                            </div>
                           </div>
                         ))}
                       </div>
                     </div>
-                  )}
-                  <div className="flex flex-col">
-                    <div className="mb-2 flex items-center">
-                      <span className="text-sm font-medium text-purple-700">Filter by Date Range:</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="flex items-center">
-                        <label htmlFor="start-date" className="text-sm text-gray-700 mr-1">
-                          From
-                        </label>
-                        <input
-                          id="start-date"
-                          type="date"
-                          value={startDate}
-                          onChange={(e) => setStartDate(e.target.value)}
-                          className="text-sm border border-gray-200 rounded-md p-1"
-                        />
-                      </div>
-                      <div className="flex items-center">
-                        <label htmlFor="end-date" className="text-sm text-gray-700 mr-1">
-                          To
-                        </label>
-                        <input
-                          id="end-date"
-                          type="date"
-                          value={endDate}
-                          onChange={(e) => setEndDate(e.target.value)}
-                          className="text-sm border border-gray-200 rounded-md p-1"
-                        />
-                      </div>
-                    </div>
                   </div>
-                  {(selectedMembers.length > 0 || startDate || endDate || searchTerm) && (
-                    <button
-                      onClick={resetFilters}
-                      className="px-3 py-1 bg-red-100 text-red-700 rounded-md hover:bg-red-200 text-sm"
-                    >
-                      Clear All Filters
-                    </button>
-                  )}
-                </div>
-              </div>
 
-              {/* NEW: Confirmation Modal */}
-              <ConfirmationModal
-                isOpen={confirmationModal.isOpen}
-                itemCount={confirmationModal.itemCount}
-                onConfirm={confirmMarkDone}
-                onCancel={() => setConfirmationModal({ isOpen: false, itemCount: 0 })}
-              />
-
-              {/* Task Statistics */}
-              <div className="p-4 border-b border-purple-100 bg-blue-50">
-                <div className="flex flex-col">
-                  <h3 className="text-sm font-medium text-blue-700 mb-2">Task Completion Statistics:</h3>
-                  <div className="flex flex-wrap gap-4">
-                    <div className="px-3 py-2 bg-white rounded-md shadow-sm">
-                      <span className="text-xs text-gray-500">Total Completed</span>
-                      <div className="text-lg font-semibold text-blue-600">{getTaskStatistics().totalCompleted}</div>
-                    </div>
-                    {(selectedMembers.length > 0 || startDate || endDate || searchTerm) && (
-                      <div className="px-3 py-2 bg-white rounded-md shadow-sm">
-                        <span className="text-xs text-gray-500">Filtered Results</span>
-                        <div className="text-lg font-semibold text-blue-600">{getTaskStatistics().filteredTotal}</div>
-                      </div>
-                    )}
-                    {selectedMembers.map((member) => (
-                      <div key={member} className="px-3 py-2 bg-white rounded-md shadow-sm">
-                        <span className="text-xs text-gray-500">{member}</span>
-                        <div className="text-lg font-semibold text-indigo-600">
-                          {getTaskStatistics().memberStats[member]}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* History Table - Optimized for performance */}
-              <div className="h-[calc(100vh-300px)] overflow-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50 sticky top-0 z-10">
-                    <tr>
-                      {/* NEW: Submission Status Column Header (First Column) */}
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50 min-w-[120px]">
-                        Submission Status
-                      </th>
-                      {/* Admin Select Column Header */}
-                      {(userRole === "admin" || userRole === "main admin") && (
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
-                          <div className="flex flex-col items-center">
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
-                              checked={
-                                fillteredHistoryDataByMainAdmin.filter(item => isEmpty(item["col15"]) || item["col15"].toString().trim() !== "Done").length > 0 &&
-                                selectedHistoryItems.length === fillteredHistoryDataByMainAdmin.filter(item => isEmpty(item["col15"]) || item["col15"].toString().trim() !== "Done").length
-                              }
-                              onChange={(e) => {
-                                const unprocessedItems = fillteredHistoryDataByMainAdmin.filter(item => isEmpty(item["col15"]) || item["col15"].toString().trim() !== "Done")
-                                if (e.target.checked) {
-                                  setSelectedHistoryItems(unprocessedItems)
-                                } else {
-                                  setSelectedHistoryItems([])
-                                }
-                              }}
-                            />
-                            <span className="text-xs text-gray-400 mt-1">Admin</span>
-                          </div>
-                        </th>
-                      )}
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px]">
-                        Task ID
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">
-                        Department Name
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px]">
-                        Given By
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px]">
-                        Name
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[200px]">
-                        Task Description
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-yellow-50 min-w-[140px]">
-                        Task Start Date & Time
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[80px]">
-                        Freq
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">
-                        Enable Reminders
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">
-                        Require Attachment
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-green-50 min-w-[140px]">
-                        Actual Date & Time
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50 min-w-[80px]">
-                        Status
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-purple-50 min-w-[150px]">
-                        Remarks
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px]">
-                        Attachment
-                      </th>
-                      {/* Admin Done Date Column */}
-                      {(userRole === "admin" || userRole === "main admin") && (
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 min-w-[140px]">
-                          Admin Done
-                        </th>
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {fillteredHistoryDataByMainAdmin.length > 0 ? (
-                      fillteredHistoryDataByMainAdmin.map((history) => {
-                        const submissionStatus = getSubmissionStatus(history["col10"], history["col11"]);
-                        return (
-                          <tr key={history._id} className="hover:bg-gray-50">
-                            {/* NEW: Submission Status Column (First Column) */}
-                            <td className="px-3 py-4 bg-blue-50 min-w-[120px]">
-                              <span
-                                className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${submissionStatus.color === 'green'
-                                  ? "bg-green-100 text-green-800"
-                                  : submissionStatus.color === 'red'
-                                    ? "bg-red-100 text-red-800"
-                                    : "bg-gray-100 text-gray-800"
-                                  }`}
-                              >
-                                {submissionStatus.status}
-                              </span>
-                            </td>
-                            {/* Admin Select Checkbox - Check for "Done" text specifically */}
-                            {(userRole === "admin" || userRole === "main admin") && (
-                              <td className="px-3 py-4 w-12">
-                                {!isEmpty(history["col15"]) && history["col15"].toString().trim() === "Done" ? (
-                                  // Already marked as Admin Done - show checked and disabled checkbox
-                                  <div className="flex flex-col items-center">
-                                    <input
-                                      type="checkbox"
-                                      className="h-4 w-4 rounded border-gray-300 text-green-600 bg-green-100"
-                                      checked={true}
-                                      disabled={true}
-                                      title="Admin Done"
-                                    />
-                                    <span className="text-xs text-green-600 mt-1 text-center break-words">
-                                      Done
-                                    </span>
-                                  </div>
-                                ) : (
-                                  // Not admin done yet - normal selectable checkbox
-                                  <div className="flex flex-col items-center">
-                                    <input
-                                      type="checkbox"
-                                      className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
-                                      checked={selectedHistoryItems.some((item) => item._id === history._id)}
-                                      onChange={() => {
-                                        setSelectedHistoryItems((prev) =>
-                                          prev.some((item) => item._id === history._id)
-                                            ? prev.filter((item) => item._id !== history._id)
-                                            : [...prev, history],
-                                        )
-                                      }}
-                                    />
-                                    <span className="text-xs text-gray-400 mt-1 text-center break-words">
-                                      Mark Done
-                                    </span>
-                                  </div>
-                                )}
-                              </td>
-                            )}
-                            <td className="px-3 py-4 min-w-[100px]">
-                              <div className="text-sm font-medium text-gray-900 break-words">
-                                {history["col1"] || "—"}
+                  {/* History Table - Optimized for performance */}
+                  <div className="h-[calc(100vh-300px)] overflow-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50 sticky top-0 z-10">
+                        <tr>
+                          {/* NEW: Submission Status Column Header (First Column) */}
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50 min-w-[120px]">
+                            Submission Status
+                          </th>
+                          {/* Admin Select Column Header */}
+                          {(userRole === "admin" || userRole === "main admin") && (
+                            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
+                              <div className="flex flex-col items-center">
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                                  checked={
+                                    fillteredHistoryDataByMainAdmin.filter(item => isEmpty(item["col15"]) || item["col15"].toString().trim() !== "Done").length > 0 &&
+                                    selectedHistoryItems.length === fillteredHistoryDataByMainAdmin.filter(item => isEmpty(item["col15"]) || item["col15"].toString().trim() !== "Done").length
+                                  }
+                                  onChange={(e) => {
+                                    const unprocessedItems = fillteredHistoryDataByMainAdmin.filter(item => isEmpty(item["col15"]) || item["col15"].toString().trim() !== "Done")
+                                    if (e.target.checked) {
+                                      setSelectedHistoryItems(unprocessedItems)
+                                    } else {
+                                      setSelectedHistoryItems([])
+                                    }
+                                  }}
+                                />
+                                <span className="text-xs text-gray-400 mt-1">Admin</span>
                               </div>
-                            </td>
-                            <td className="px-3 py-4 min-w-[120px]">
-                              <div className="text-sm text-gray-900 break-words">{history["col2"] || "—"}</div>
-                            </td>
-                            <td className="px-3 py-4 min-w-[100px]">
-                              <div className="text-sm text-gray-900 break-words">{history["col3"] || "—"}</div>
-                            </td>
-                            <td className="px-3 py-4 min-w-[100px]">
-                              <div className="text-sm text-gray-900 break-words">{history["col4"] || "—"}</div>
-                            </td>
-                            <td className="px-3 py-4 min-w-[200px]">
-                              <div className="text-sm text-gray-900 break-words" title={history["col5"]}>
-                                {history["col5"] || "—"}
-                              </div>
-                            </td>
-                            <td className="px-3 py-4 bg-yellow-50 min-w-[140px]">
-                              <div className="text-sm text-gray-900 break-words">
-                                {history["col6"] ? (
-                                  <div>
-                                    <div className="font-medium break-words">
-                                      {history["col6"].includes(" ") ? history["col6"].split(" ")[0] : history["col6"]}
-                                    </div>
-                                    {history["col6"].includes(" ") && (
-                                      <div className="text-xs text-gray-500 break-words">
-                                        {history["col6"].split(" ")[1]}
-                                      </div>
-                                    )}
-                                  </div>
-                                ) : (
-                                  "—"
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-3 py-4 min-w-[80px]">
-                              <div className="text-sm text-gray-900 break-words">{history["col7"] || "—"}</div>
-                            </td>
-                            <td className="px-3 py-4 min-w-[120px]">
-                              <div className="text-sm text-gray-900 break-words">{history["col8"] || "—"}</div>
-                            </td>
-                            <td className="px-3 py-4 min-w-[120px]">
-                              <div className="text-sm text-gray-900 break-words">{history["col9"] || "—"}</div>
-                            </td>
-                            <td className="px-3 py-4 bg-green-50 min-w-[140px]">
-                              <div className="text-sm text-gray-900 break-words">
-                                {history["col10"] ? (
-                                  <div>
-                                    <div className="font-medium break-words">
-                                      {history["col10"].includes(" ") ? history["col10"].split(" ")[0] : history["col10"]}
-                                    </div>
-                                    {history["col10"].includes(" ") && (
-                                      <div className="text-xs text-gray-500 break-words">
-                                        {history["col10"].split(" ")[1]}
-                                      </div>
-                                    )}
-                                  </div>
-                                ) : (
-                                  "—"
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-3 py-4 bg-blue-50 min-w-[80px]">
-                              <span
-                                className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full break-words ${history["col12"] === "Yes"
-                                  ? "bg-green-100 text-green-800"
-                                  : history["col12"] === "No"
-                                    ? "bg-red-100 text-red-800"
-                                    : "bg-gray-100 text-gray-800"
-                                  }`}
-                              >
-                                {history["col12"] || "—"}
-                              </span>
-                            </td>
-                            <td className="px-3 py-4 bg-purple-50 min-w-[150px]">
-                              <div className="text-sm text-gray-900 break-words" title={history["col13"]}>
-                                {history["col13"] || "—"}
-                              </div>
-                            </td>
-                            <td className="px-3 py-4 min-w-[100px]">
-                              {history["col14"] ? (
-                                <a
-                                  href={history["col14"]}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 hover:text-blue-800 underline flex items-center break-words"
-                                >
-                                  <img
-                                    src={history["col14"] || "/placeholder.svg?height=32&width=32"}
-                                    alt="Attachment"
-                                    className="h-8 w-8 object-cover rounded-md mr-2 flex-shrink-0"
-                                  />
-                                  <span className="break-words">View</span>
-                                </a>
-                              ) : (
-                                <span className="text-gray-400">No attachment</span>
-                              )}
-                            </td>
-                            {/* Admin Done Column - Show "Done" text */}
-                            {(userRole === "admin" || userRole === "main admin") && (
-                              <td className="px-3 py-4 bg-gray-50 min-w-[140px]">
-                                {!isEmpty(history["col15"]) && history["col15"].toString().trim() === "Done" ? (
-                                  <div className="text-sm text-gray-900 break-words">
-                                    <div className="flex items-center">
-                                      <div className="h-4 w-4 rounded border-gray-300 text-green-600 bg-green-100 mr-2 flex items-center justify-center">
-                                        <span className="text-xs text-green-600">✓</span>
-                                      </div>
-                                      <div className="flex flex-col">
-                                        <div className="font-medium text-green-700 text-sm">
+                            </th>
+                          )}
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px]">
+                            Task ID
+                          </th>
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">
+                            Department Name
+                          </th>
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px]">
+                            Given By
+                          </th>
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px]">
+                            Name
+                          </th>
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[200px]">
+                            Task Description
+                          </th>
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-yellow-50 min-w-[140px]">
+                            Task Start Date & Time
+                          </th>
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[80px]">
+                            Freq
+                          </th>
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">
+                            Enable Reminders
+                          </th>
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">
+                            Require Attachment
+                          </th>
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-green-50 min-w-[140px]">
+                            Actual Date & Time
+                          </th>
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50 min-w-[80px]">
+                            Status
+                          </th>
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-purple-50 min-w-[150px]">
+                            Remarks
+                          </th>
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px]">
+                            Attachment
+                          </th>
+                          {/* Admin Done Date Column */}
+                          {(userRole === "admin" || userRole === "main admin") && (
+                            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 min-w-[140px]">
+                              Admin Done
+                            </th>
+                          )}
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {fillteredHistoryDataByMainAdmin.length > 0 ? (
+                          fillteredHistoryDataByMainAdmin.map((history) => {
+                            const submissionStatus = getSubmissionStatus(history["col10"], history["col11"]);
+                            return (
+                              <tr key={history._id} className="hover:bg-gray-50">
+                                {/* NEW: Submission Status Column (First Column) */}
+                                <td className="px-3 py-4 bg-blue-50 min-w-[120px]">
+                                  <span
+                                    className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${submissionStatus.color === 'green'
+                                      ? "bg-green-100 text-green-800"
+                                      : submissionStatus.color === 'red'
+                                        ? "bg-red-100 text-red-800"
+                                        : "bg-gray-100 text-gray-800"
+                                      }`}
+                                  >
+                                    {submissionStatus.status}
+                                  </span>
+                                </td>
+                                {/* Admin Select Checkbox - Check for "Done" text specifically */}
+                                {(userRole === "admin" || userRole === "main admin") && (
+                                  <td className="px-3 py-4 w-12">
+                                    {!isEmpty(history["col15"]) && history["col15"].toString().trim() === "Done" ? (
+                                      // Already marked as Admin Done - show checked and disabled checkbox
+                                      <div className="flex flex-col items-center">
+                                        <input
+                                          type="checkbox"
+                                          className="h-4 w-4 rounded border-gray-300 text-green-600 bg-green-100"
+                                          checked={true}
+                                          disabled={true}
+                                          title="Admin Done"
+                                        />
+                                        <span className="text-xs text-green-600 mt-1 text-center break-words">
                                           Done
+                                        </span>
+                                      </div>
+                                    ) : (
+                                      // Not admin done yet - normal selectable checkbox
+                                      <div className="flex flex-col items-center">
+                                        <input
+                                          type="checkbox"
+                                          className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                                          checked={selectedHistoryItems.some((item) => item._id === history._id)}
+                                          onChange={() => {
+                                            setSelectedHistoryItems((prev) =>
+                                              prev.some((item) => item._id === history._id)
+                                                ? prev.filter((item) => item._id !== history._id)
+                                                : [...prev, history],
+                                            )
+                                          }}
+                                        />
+                                        <span className="text-xs text-gray-400 mt-1 text-center break-words">
+                                          Mark Done
+                                        </span>
+                                      </div>
+                                    )}
+                                  </td>
+                                )}
+                                <td className="px-3 py-4 min-w-[100px]">
+                                  <div className="text-sm font-medium text-gray-900 break-words">
+                                    {history["col1"] || "—"}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-4 min-w-[120px]">
+                                  <div className="text-sm text-gray-900 break-words">{history["col2"] || "—"}</div>
+                                </td>
+                                <td className="px-3 py-4 min-w-[100px]">
+                                  <div className="text-sm text-gray-900 break-words">{history["col3"] || "—"}</div>
+                                </td>
+                                <td className="px-3 py-4 min-w-[100px]">
+                                  <div className="text-sm text-gray-900 break-words">{history["col4"] || "—"}</div>
+                                </td>
+                                <td className="px-3 py-4 min-w-[200px]">
+                                  <div className="text-sm text-gray-900 break-words" title={history["col5"]}>
+                                    {history["col5"] || "—"}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-4 bg-yellow-50 min-w-[140px]">
+                                  <div className="text-sm text-gray-900 break-words">
+                                    {history["col6"] ? (
+                                      <div>
+                                        <div className="font-medium break-words">
+                                          {history["col6"].includes(" ") ? history["col6"].split(" ")[0] : history["col6"]}
+                                        </div>
+                                        {history["col6"].includes(" ") && (
+                                          <div className="text-xs text-gray-500 break-words">
+                                            {history["col6"].split(" ")[1]}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      "—"
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-4 min-w-[80px]">
+                                  <div className="text-sm text-gray-900 break-words">{history["col7"] || "—"}</div>
+                                </td>
+                                <td className="px-3 py-4 min-w-[120px]">
+                                  <div className="text-sm text-gray-900 break-words">{history["col8"] || "—"}</div>
+                                </td>
+                                <td className="px-3 py-4 min-w-[120px]">
+                                  <div className="text-sm text-gray-900 break-words">{history["col9"] || "—"}</div>
+                                </td>
+                                <td className="px-3 py-4 bg-green-50 min-w-[140px]">
+                                  <div className="text-sm text-gray-900 break-words">
+                                    {history["col10"] ? (
+                                      <div>
+                                        <div className="font-medium break-words">
+                                          {history["col10"].includes(" ") ? history["col10"].split(" ")[0] : history["col10"]}
+                                        </div>
+                                        {history["col10"].includes(" ") && (
+                                          <div className="text-xs text-gray-500 break-words">
+                                            {history["col10"].split(" ")[1]}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      "—"
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-4 bg-blue-50 min-w-[80px]">
+                                  <span
+                                    className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full break-words ${history["col12"] === "Yes"
+                                      ? "bg-green-100 text-green-800"
+                                      : history["col12"] === "No"
+                                        ? "bg-red-100 text-red-800"
+                                        : "bg-gray-100 text-gray-800"
+                                      }`}
+                                  >
+                                    {history["col12"] || "—"}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-4 bg-purple-50 min-w-[150px]">
+                                  <div className="text-sm text-gray-900 break-words" title={history["col13"]}>
+                                    {history["col13"] || "—"}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-4 min-w-[100px]">
+                                  {history["col14"] ? (
+                                    <a
+                                      href={history["col14"]}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-blue-600 hover:text-blue-800 underline flex items-center break-words"
+                                    >
+                                      <img
+                                        src={history["col14"] || "/placeholder.svg?height=32&width=32"}
+                                        alt="Attachment"
+                                        className="h-8 w-8 object-cover rounded-md mr-2 flex-shrink-0"
+                                      />
+                                      <span className="break-words">View</span>
+                                    </a>
+                                  ) : (
+                                    <span className="text-gray-400">No attachment</span>
+                                  )}
+                                </td>
+                                {/* Admin Done Column - Show "Done" text */}
+                                {(userRole === "admin" || userRole === "main admin") && (
+                                  <td className="px-3 py-4 bg-gray-50 min-w-[140px]">
+                                    {!isEmpty(history["col15"]) && history["col15"].toString().trim() === "Done" ? (
+                                      <div className="text-sm text-gray-900 break-words">
+                                        <div className="flex items-center">
+                                          <div className="h-4 w-4 rounded border-gray-300 text-green-600 bg-green-100 mr-2 flex items-center justify-center">
+                                            <span className="text-xs text-green-600">✓</span>
+                                          </div>
+                                          <div className="flex flex-col">
+                                            <div className="font-medium text-green-700 text-sm">
+                                              Done
+                                            </div>
+                                          </div>
                                         </div>
                                       </div>
+                                    ) : (
+                                      <div className="flex items-center text-gray-400 text-sm">
+                                        <div className="h-4 w-4 rounded border-gray-300 mr-2"></div>
+                                        <span>Pending</span>
+                                      </div>
+                                    )}
+                                  </td>
+                                )}
+                              </tr>
+                            )
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan={(userRole === "admin" || userRole === "main admin") ? 16 : 14} className="px-6 py-4 text-center text-gray-500">
+                              {searchTerm || selectedMembers.length > 0 || startDate || endDate
+                                ? "No historical records matching your filters"
+                                : "No completed records found"}
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : (
+                /* Regular Tasks Table - Optimized for performance */
+                <div className="h-[calc(100vh-250px)] overflow-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50 sticky top-0 z-10">
+                      <tr>
+                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                            checked={filteredAccountDataByMainAdming.length > 0 && selectedItems.size === filteredAccountDataByMainAdming.length}
+                            onChange={handleSelectAllItems}
+                          />
+                        </th>
+                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px]">
+                          Task ID
+                        </th>
+                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">
+                          Department Name
+                        </th>
+                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px]">
+                          Given By
+                        </th>
+                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px]">
+                          Name
+                        </th>
+                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[200px]">
+                          Task Description
+                        </th>
+                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-yellow-50 min-w-[140px]">
+                          Task Start Date & Time
+                        </th>
+                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[80px]">
+                          Freq
+                        </th>
+                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">
+                          Enable Reminders
+                        </th>
+                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">
+                          Require Attachment
+                        </th>
+                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px]">
+                          Status
+                        </th>
+                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[150px]">
+                          Remarks
+                        </th>
+                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">
+                          Upload Image
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {filteredAccountDataByMainAdming.length > 0 ? (
+                        filteredAccountDataByMainAdming.map((account) => {
+                          const isSelected = selectedItems.has(account._id)
+                          return (
+                            <tr key={account._id} className={`${isSelected ? "bg-purple-50" : ""} hover:bg-gray-50`}>
+                              <td className="px-3 py-4 w-12">
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                  checked={isSelected}
+                                  onChange={(e) => handleCheckboxClick(e, account._id)}
+                                />
+                              </td>
+                              <td className="px-3 py-4 min-w-[100px]">
+                                <div className="text-sm text-gray-900 break-words">{account["col1"] || "—"}</div>
+                              </td>
+                              <td className="px-3 py-4 min-w-[120px]">
+                                <div className="text-sm text-gray-900 break-words">{account["col2"] || "—"}</div>
+                              </td>
+                              <td className="px-3 py-4 min-w-[100px]">
+                                <div className="text-sm text-gray-900 break-words">{account["col3"] || "—"}</div>
+                              </td>
+                              <td className="px-3 py-4 min-w-[100px]">
+                                <div className="text-sm text-gray-900 break-words">{account["col4"] || "—"}</div>
+                              </td>
+                              <td className="px-3 py-4 min-w-[200px]">
+                                <div className="text-sm text-gray-900 break-words" title={account["col5"]}>
+                                  {account["col5"] || "—"}
+                                </div>
+                              </td>
+                              <td className="px-3 py-4 bg-yellow-50 min-w-[140px]">
+                                <div className="text-sm text-gray-900 break-words">
+                                  {account["col6"] ? (
+                                    <div>
+                                      <div className="font-medium break-words">
+                                        {account["col6"].includes(" ") ? account["col6"].split(" ")[0] : account["col6"]}
+                                      </div>
+                                      {account["col6"].includes(" ") && (
+                                        <div className="text-xs text-gray-500 break-words">
+                                          {account["col6"].split(" ")[1]}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-3 py-4 min-w-[80px]">
+                                <div className="text-sm text-gray-900 break-words">{account["col7"] || "—"}</div>
+                              </td>
+                              <td className="px-3 py-4 min-w-[120px]">
+                                <div className="text-sm text-gray-900 break-words">{account["col8"] || "—"}</div>
+                              </td>
+                              <td className="px-3 py-4 min-w-[120px]">
+                                <div className="text-sm text-gray-900 break-words">{account["col9"] || "—"}</div>
+                              </td>
+                              <td className="px-3 py-4 bg-yellow-50 min-w-[100px]">
+                                <select
+                                  disabled={!isSelected}
+                                  value={additionalData[account._id] || ""}
+                                  onChange={(e) => {
+                                    setAdditionalData((prev) => ({ ...prev, [account._id]: e.target.value }))
+                                    if (e.target.value !== "No") {
+                                      setRemarksData((prev) => {
+                                        const newData = { ...prev }
+                                        delete newData[account._id]
+                                        return newData
+                                      })
+                                    }
+                                  }}
+                                  className="border border-gray-300 rounded-md px-2 py-1 w-full disabled:bg-gray-100 disabled:cursor-not-allowed text-sm"
+                                >
+                                  <option value="">Select...</option>
+                                  <option value="Yes">Yes</option>
+                                  {/* <option value="No">No</option> */}
+                                </select>
+                              </td>
+                              <td className="px-3 py-4 bg-orange-50 min-w-[150px]">
+                                <input
+                                  type="text"
+                                  placeholder="Enter remarks"
+                                  disabled={!isSelected || !additionalData[account._id]}
+                                  value={remarksData[account._id] || ""}
+                                  onChange={(e) => setRemarksData((prev) => ({ ...prev, [account._id]: e.target.value }))}
+                                  className="border rounded-md px-2 py-1 w-full border-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed text-sm break-words"
+                                />
+                              </td>
+                              <td className="px-3 py-4 bg-green-50 min-w-[120px]">
+                                {account.image ? (
+                                  <div className="flex items-center">
+                                    <img
+                                      src={
+                                        typeof account.image === "string"
+                                          ? account.image
+                                          : URL.createObjectURL(account.image)
+                                      }
+                                      alt="Receipt"
+                                      className="h-10 w-10 object-cover rounded-md mr-2 flex-shrink-0"
+                                    />
+                                    <div className="flex flex-col min-w-0">
+                                      <span className="text-xs text-gray-500 break-words">
+                                        {account.image instanceof File ? account.image.name : "Uploaded Receipt"}
+                                      </span>
+                                      {account.image instanceof File ? (
+                                        <span className="text-xs text-green-600">Ready to upload</span>
+                                      ) : (
+                                        <button
+                                          className="text-xs text-purple-600 hover:text-purple-800 break-words"
+                                          onClick={() => window.open(account.image, "_blank")}
+                                        >
+                                          View Full Image
+                                        </button>
+                                      )}
                                     </div>
                                   </div>
                                 ) : (
-                                  <div className="flex items-center text-gray-400 text-sm">
-                                    <div className="h-4 w-4 rounded border-gray-300 mr-2"></div>
-                                    <span>Pending</span>
-                                  </div>
+                                  <label
+                                    className={`flex items-center cursor-pointer ${account["col9"]?.toUpperCase() === "YES" ? "text-red-600 font-medium" : "text-purple-600"} hover:text-purple-800`}
+                                  >
+                                    <Upload className="h-4 w-4 mr-1 flex-shrink-0" />
+                                    <span className="text-xs break-words">
+                                      {account["col9"]?.toUpperCase() === "YES"
+                                        ? "Required Upload"
+                                        : "Upload Receipt Image"}
+                                      {account["col9"]?.toUpperCase() === "YES" && (
+                                        <span className="text-red-500 ml-1">*</span>
+                                      )}
+                                    </span>
+                                    <input
+                                      type="file"
+                                      className="hidden"
+                                      accept="image/*"
+                                      onChange={(e) => handleImageUpload(account._id, e)}
+                                      disabled={!isSelected}
+                                    />
+                                  </label>
                                 )}
                               </td>
-                            )}
-                          </tr>
-                        )
-                      })
-                    ) : (
-                      <tr>
-                        <td colSpan={(userRole === "admin" || userRole === "main admin") ? 16 : 14} className="px-6 py-4 text-center text-gray-500">
-                          {searchTerm || selectedMembers.length > 0 || startDate || endDate
-                            ? "No historical records matching your filters"
-                            : "No completed records found"}
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          ) : (
-            /* Regular Tasks Table - Optimized for performance */
-            <div className="h-[calc(100vh-250px)] overflow-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50 sticky top-0 z-10">
-                  <tr>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                        checked={filteredAccountDataByMainAdming.length > 0 && selectedItems.size === filteredAccountDataByMainAdming.length}
-                        onChange={handleSelectAllItems}
-                      />
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px]">
-                      Task ID
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">
-                      Department Name
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px]">
-                      Given By
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px]">
-                      Name
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[200px]">
-                      Task Description
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-yellow-50 min-w-[140px]">
-                      Task Start Date & Time
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[80px]">
-                      Freq
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">
-                      Enable Reminders
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">
-                      Require Attachment
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px]">
-                      Status
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[150px]">
-                      Remarks
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">
-                      Upload Image
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredAccountDataByMainAdming.length > 0 ? (
-                    filteredAccountDataByMainAdming.map((account) => {
-                      const isSelected = selectedItems.has(account._id)
-                      return (
-                        <tr key={account._id} className={`${isSelected ? "bg-purple-50" : ""} hover:bg-gray-50`}>
-                          <td className="px-3 py-4 w-12">
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                              checked={isSelected}
-                              onChange={(e) => handleCheckboxClick(e, account._id)}
-                            />
-                          </td>
-                          <td className="px-3 py-4 min-w-[100px]">
-                            <div className="text-sm text-gray-900 break-words">{account["col1"] || "—"}</div>
-                          </td>
-                          <td className="px-3 py-4 min-w-[120px]">
-                            <div className="text-sm text-gray-900 break-words">{account["col2"] || "—"}</div>
-                          </td>
-                          <td className="px-3 py-4 min-w-[100px]">
-                            <div className="text-sm text-gray-900 break-words">{account["col3"] || "—"}</div>
-                          </td>
-                          <td className="px-3 py-4 min-w-[100px]">
-                            <div className="text-sm text-gray-900 break-words">{account["col4"] || "—"}</div>
-                          </td>
-                          <td className="px-3 py-4 min-w-[200px]">
-                            <div className="text-sm text-gray-900 break-words" title={account["col5"]}>
-                              {account["col5"] || "—"}
-                            </div>
-                          </td>
-                          <td className="px-3 py-4 bg-yellow-50 min-w-[140px]">
-                            <div className="text-sm text-gray-900 break-words">
-                              {account["col6"] ? (
-                                <div>
-                                  <div className="font-medium break-words">
-                                    {account["col6"].includes(" ") ? account["col6"].split(" ")[0] : account["col6"]}
-                                  </div>
-                                  {account["col6"].includes(" ") && (
-                                    <div className="text-xs text-gray-500 break-words">
-                                      {account["col6"].split(" ")[1]}
-                                    </div>
-                                  )}
-                                </div>
-                              ) : (
-                                "—"
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-3 py-4 min-w-[80px]">
-                            <div className="text-sm text-gray-900 break-words">{account["col7"] || "—"}</div>
-                          </td>
-                          <td className="px-3 py-4 min-w-[120px]">
-                            <div className="text-sm text-gray-900 break-words">{account["col8"] || "—"}</div>
-                          </td>
-                          <td className="px-3 py-4 min-w-[120px]">
-                            <div className="text-sm text-gray-900 break-words">{account["col9"] || "—"}</div>
-                          </td>
-                          <td className="px-3 py-4 bg-yellow-50 min-w-[100px]">
-                            <select
-                              disabled={!isSelected}
-                              value={additionalData[account._id] || ""}
-                              onChange={(e) => {
-                                setAdditionalData((prev) => ({ ...prev, [account._id]: e.target.value }))
-                                if (e.target.value !== "No") {
-                                  setRemarksData((prev) => {
-                                    const newData = { ...prev }
-                                    delete newData[account._id]
-                                    return newData
-                                  })
-                                }
-                              }}
-                              className="border border-gray-300 rounded-md px-2 py-1 w-full disabled:bg-gray-100 disabled:cursor-not-allowed text-sm"
-                            >
-                              <option value="">Select...</option>
-                              <option value="Yes">Yes</option>
-                              {/* <option value="No">No</option> */}
-                            </select>
-                          </td>
-                          <td className="px-3 py-4 bg-orange-50 min-w-[150px]">
-                            <input
-                              type="text"
-                              placeholder="Enter remarks"
-                              disabled={!isSelected || !additionalData[account._id]}
-                              value={remarksData[account._id] || ""}
-                              onChange={(e) => setRemarksData((prev) => ({ ...prev, [account._id]: e.target.value }))}
-                              className="border rounded-md px-2 py-1 w-full border-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed text-sm break-words"
-                            />
-                          </td>
-                          <td className="px-3 py-4 bg-green-50 min-w-[120px]">
-                            {account.image ? (
-                              <div className="flex items-center">
-                                <img
-                                  src={
-                                    typeof account.image === "string"
-                                      ? account.image
-                                      : URL.createObjectURL(account.image)
-                                  }
-                                  alt="Receipt"
-                                  className="h-10 w-10 object-cover rounded-md mr-2 flex-shrink-0"
-                                />
-                                <div className="flex flex-col min-w-0">
-                                  <span className="text-xs text-gray-500 break-words">
-                                    {account.image instanceof File ? account.image.name : "Uploaded Receipt"}
-                                  </span>
-                                  {account.image instanceof File ? (
-                                    <span className="text-xs text-green-600">Ready to upload</span>
-                                  ) : (
-                                    <button
-                                      className="text-xs text-purple-600 hover:text-purple-800 break-words"
-                                      onClick={() => window.open(account.image, "_blank")}
-                                    >
-                                      View Full Image
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            ) : (
-                              <label
-                                className={`flex items-center cursor-pointer ${account["col9"]?.toUpperCase() === "YES" ? "text-red-600 font-medium" : "text-purple-600"} hover:text-purple-800`}
-                              >
-                                <Upload className="h-4 w-4 mr-1 flex-shrink-0" />
-                                <span className="text-xs break-words">
-                                  {account["col9"]?.toUpperCase() === "YES"
-                                    ? "Required Upload"
-                                    : "Upload Receipt Image"}
-                                  {account["col9"]?.toUpperCase() === "YES" && (
-                                    <span className="text-red-500 ml-1">*</span>
-                                  )}
-                                </span>
-                                <input
-                                  type="file"
-                                  className="hidden"
-                                  accept="image/*"
-                                  onChange={(e) => handleImageUpload(account._id, e)}
-                                  disabled={!isSelected}
-                                />
-                              </label>
-                            )}
+                            </tr>
+                          )
+                        })
+                      ) : (
+                        <tr>
+                          <td colSpan={13} className="px-6 py-4 text-center text-gray-500">
+                            {searchTerm
+                              ? "No tasks matching your search"
+                              : "No pending tasks found for today, tomorrow, or past due dates"}
                           </td>
                         </tr>
-                      )
-                    })
-                  ) : (
-                    <tr>
-                      <td colSpan={13} className="px-6 py-4 text-center text-gray-500">
-                        {searchTerm
-                          ? "No tasks matching your search"
-                          : "No pending tasks found for today, tomorrow, or past due dates"}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

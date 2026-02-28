@@ -287,23 +287,28 @@ export default function AssignTask() {
 
       // Extract options from columns A, B, and C
       const departments = [];
-      const givenBy = [];
+      const givenByMap = new Map();
       const doers = [];
 
       // Process all rows starting from index 1 (skip header)
       data.table.rows.slice(1).forEach((row) => {
-        // Column A - Departments
+        // Find Department Name on this row (Column A)
+        let rowDept = "";
         if (row.c && row.c[0] && row.c[0].v) {
           const value = row.c[0].v.toString().trim();
           if (value !== "") {
             departments.push(value);
+            rowDept = value;
           }
         }
         // Column B - Given By
         if (row.c && row.c[1] && row.c[1].v) {
           const value = row.c[1].v.toString().trim();
           if (value !== "") {
-            givenBy.push(value);
+            // Keep the first assigned department or update if empty
+            if (!givenByMap.has(value) || rowDept) {
+              givenByMap.set(value, rowDept);
+            }
           }
         }
         // Column C - Doers
@@ -317,7 +322,14 @@ export default function AssignTask() {
 
       // Remove duplicates and sort
       setDepartmentOptions([...new Set(departments)].sort());
-      setGivenByOptions([...new Set(givenBy)].sort());
+
+      const uniqueGivenBy = Array.from(givenByMap.keys()).sort();
+      const givenByWithDept = uniqueGivenBy.map((name) => ({
+        name,
+        department: givenByMap.get(name) || "",
+      }));
+      setGivenByOptions(givenByWithDept);
+
       setDoerOptions([...new Set(doers)].sort());
 
 
@@ -325,7 +337,10 @@ export default function AssignTask() {
       console.error("Error fetching master sheet options:", error);
       // Set default options if fetch fails
       setDepartmentOptions(["Department 1", "Department 2"]);
-      setGivenByOptions(["User 1", "User 2"]);
+      setGivenByOptions([
+        { name: "User 1", department: "" },
+        { name: "User 2", department: "" },
+      ]);
       setDoerOptions(["Doer 1", "Doer 2"]);
     }
   };
@@ -1177,7 +1192,7 @@ export default function AssignTask() {
                       htmlFor="givenBy"
                       className="block text-sm font-medium text-purple-700"
                     >
-                      Given By
+                      Given By Department
                     </label>
                     <select
                       id="givenBy"
@@ -1187,12 +1202,18 @@ export default function AssignTask() {
                       required
                       className="w-full rounded-md border border-purple-200 p-2 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
                     >
-                      <option value="">Select Given By</option>
-                      {givenByOptions.map((person, index) => (
-                        <option key={index} value={person}>
-                          {person}
-                        </option>
-                      ))}
+                      <option value="">Select Given By Department</option>
+                      {givenByOptions.map((person, index) => {
+                        const name = person?.name || person;
+                        const dept = person?.department;
+                        // Show only the department if available, else show name as fallback
+                        const displayLabel = dept ? dept : name;
+                        return (
+                          <option key={index} value={name}>
+                            {displayLabel}
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
 

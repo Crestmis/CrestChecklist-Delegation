@@ -40,6 +40,7 @@ function AccountDataPage() {
   const [endDate, setEndDate] = useState("")
   const [userRole, setUserRole] = useState("")
   const [username, setUsername] = useState("")
+  const [department, setDepartment] = useState("")
 
   // NEW: Admin history selection states
   const [selectedHistoryItems, setSelectedHistoryItems] = useState([])
@@ -93,8 +94,10 @@ function AccountDataPage() {
   useEffect(() => {
     const role = sessionStorage.getItem("role")
     const user = sessionStorage.getItem("username")
+    const dept = sessionStorage.getItem("department")
     setUserRole(role || "")
     setUsername(user || "")
+    setDepartment(dept || "")
   }, [])
 
   // UPDATED: Parse Google Sheets date-time to handle DD/MM/YYYY HH:MM:SS format
@@ -319,6 +322,10 @@ function AccountDataPage() {
       .sort(sortDateWise);
   }, [accountData, searchTerm, startDate, endDate]);
 
+  const filteredAccountDataByMainAdming = useMemo(() => {
+    return userRole === "main admin" ? filteredAccountData : filteredAccountData.filter(item => item["col2"] === department);
+  }, [filteredAccountData, userRole, department]);
+
   const filteredHistoryData = useMemo(() => {
     return historyData
       .filter((item) => {
@@ -355,6 +362,10 @@ function AccountDataPage() {
         return dateB.getTime() - dateA.getTime()
       })
   }, [historyData, searchTerm, selectedMembers, startDate, endDate])
+
+  const fillteredHistoryDataByMainAdmin = useMemo(() => {
+    return userRole === "main admin" ? filteredHistoryData : filteredHistoryData.filter(item => item["col2"] === department);
+  }, [filteredHistoryData, userRole, department]);
 
   const getTaskStatistics = () => {
     const totalCompleted = historyData.length
@@ -600,7 +611,7 @@ function AccountDataPage() {
       e.stopPropagation()
       const checked = e.target.checked
       if (checked) {
-        const allIds = filteredAccountData.map((item) => item._id)
+        const allIds = filteredAccountDataByMainAdming.map((item) => item._id)
         setSelectedItems(new Set(allIds))
       } else {
         setSelectedItems(new Set())
@@ -608,7 +619,7 @@ function AccountDataPage() {
         setRemarksData({})
       }
     },
-    [filteredAccountData],
+    [filteredAccountDataByMainAdming],
   )
 
   const handleImageUpload = async (id, e) => {
@@ -737,14 +748,6 @@ function AccountDataPage() {
         };
       });
 
-      // Update local state
-      setAccountData((prev) => prev.filter((item) => !selectedItems.has(item._id)));
-      setHistoryData((prev) => [...submittedItemsForHistory, ...prev]);
-      setSelectedItems(new Set());
-      setAdditionalData({});
-      setRemarksData({});
-      setSuccessMessage(`Successfully submitted ${selectedItemsArray.length} task(s)!`);
-
       // Submit to Google Sheets
       const formData = new FormData();
       formData.append("sheetName", CONFIG.SHEET_NAME);
@@ -757,13 +760,21 @@ function AccountDataPage() {
       });
 
       const result = await response.json();
-      if (!result.success) {
+      if (result.success) {
+        // Update local state and show success message only after successful submission
+        setAccountData((prev) => prev.filter((item) => !selectedItems.has(item._id)));
+        setHistoryData((prev) => [...submittedItemsForHistory, ...prev]);
+        setSelectedItems(new Set());
+        setAdditionalData({});
+        setRemarksData({});
+        setSuccessMessage(`Successfully submitted ${selectedItemsArray.length} task(s)!`);
+      } else {
         console.error("Background submission failed:", result.error);
-        // Optionally show an error message
+        throw new Error(result.error || "Failed to submit tasks to server");
       }
     } catch (error) {
       console.error("Submission error:", error);
-      alert("Error occurred during submission. Please try again.");
+      alert(`Error occurred during submission: ${error.message}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -774,17 +785,8 @@ function AccountDataPage() {
 
 
 
-  const department = sessionStorage.getItem("department");
-
-
-  const fillteredHistoryDataByMainAdmin = sessionStorage.getItem("role") === "main admin" ? filteredHistoryData : filteredHistoryData.filter(item => item["col2"] === department);
-
-  const filteredAccountDataByMainAdming = userRole === "main admin" ? filteredAccountData : filteredAccountData.filter(item => item["col2"] === department);
-
 
   // console.log("filteredAccountData",filteredAccountData);
-
-
 
   return (
     <AdminLayout>
